@@ -1,0 +1,12 @@
+{
+  "key": "check_{{OPERATION}}_{{ENTITY}}",
+  "name": "FCSwitchOne",
+  "data": {
+    "lexpression": "$OUTPUT#{{CCJS_STAGE}}#data|has{{ENTITY}}",
+    "rcaseA": true
+  },
+  "next": {
+    "CASE_A": "{{NEXT_STAGE_IF_TRUE}}",
+    "DEFAULT": "{{NEXT_STAGE_IF_FALSE}}"
+  }
+}

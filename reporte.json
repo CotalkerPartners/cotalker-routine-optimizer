@@ -1,0 +1,915 @@
+
+Analyzing Cotalker Routine
+
+ℹ File: //Users/juliocotalker/Develop/rutinas Cotalker/trigger_formulario_prd.js
+ℹ Checks: loop,payload,patch,scalability
+
+ℹ Parsing routine...
+✓ Parsed 1 trigger(s)
+ℹ Total stages: 52
+
+ℹ Running analyzers: loop, payload, patch, scalability
+
+⚠️  Found 24 issue(s)
+
+
+Timeout / Scalability Issues
+
+ℹ 8 issue(s) related to execution time and scalability
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: FCEach loop contains 1 network request(s) (N+1 query pattern)
+  Stage: iterar_
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_precios]|responses|0|[json=>parse]|uuids',
+  estimatedIterations: 50,
+  networkCallsPerIteration: 1,
+  totalNetworkCalls: 50,
+  networkStages: [ 'red' ]
+}
+  → Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.
+  Example: See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: FCEach loop contains 1 network request(s) (N+1 query pattern)
+  Stage: iterar_servicio
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_servicios]|responses|0|[json=>parse]|uuids',
+  estimatedIterations: 50,
+  networkCallsPerIteration: 1,
+  totalNetworkCalls: 50,
+  networkStages: [ 'red_2' ]
+}
+  → Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.
+  Example: See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: FCEach loop contains 1 network request(s) (N+1 query pattern)
+  Stage: iterar_no_cobrados
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_no_cobrados]|responses|0|[json=>parse]|uuids',
+  estimatedIterations: 50,
+  networkCallsPerIteration: 1,
+  totalNetworkCalls: 50,
+  networkStages: [ 'red_3' ]
+}
+  → Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.
+  Example: See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  HIGH: FCEach loop contains 2 network request(s) (N+1 query pattern)
+  Stage: iterar_remove
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=ordenes_de_servicio_eliminar_asp_fact]|responses',
+  estimatedIterations: 100,
+  networkCallsPerIteration: 2,
+  totalNetworkCalls: 200,
+  networkStages: [ 'get_property_remove', 'patch_subproperty_remove' ]
+}
+  → Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.
+  Example: See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: May experience performance issues at 10x growth (loop: iterar_)
+  Stage: iterar_
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_precios]|responses|0|[json=>parse]|uuids',
+  current: {
+    iterations: 50,
+    operations: 50,
+    timeSeconds: 13,
+    timeFormatted: '13 seconds'
+  },
+  projections: {
+    '2x': {
+      iterations: 100,
+      operations: 100,
+      time: 25,
+      timeFormatted: '25 seconds'
+    },
+    '5x': {
+      iterations: 250,
+      operations: 250,
+      time: 63,
+      timeFormatted: '1 min 3 sec'
+    },
+    '10x': {
+      iterations: 500,
+      operations: 500,
+      time: 125,
+      timeFormatted: '2 min 5 sec'
+    }
+  },
+  networkCallsPerIteration: 1,
+  complexity: 'O(n)'
+}
+  → Convert to batch operation to achieve O(1) network calls:
+- Current: O(n) network calls
+- Optimized: O(1) batch request + O(n) CCJS processing
+- Expected 10x time: ~3 seconds (98% faster)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: May experience performance issues at 10x growth (loop: iterar_servicio)
+  Stage: iterar_servicio
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_servicios]|responses|0|[json=>parse]|uuids',
+  current: {
+    iterations: 50,
+    operations: 50,
+    timeSeconds: 13,
+    timeFormatted: '13 seconds'
+  },
+  projections: {
+    '2x': {
+      iterations: 100,
+      operations: 100,
+      time: 25,
+      timeFormatted: '25 seconds'
+    },
+    '5x': {
+      iterations: 250,
+      operations: 250,
+      time: 63,
+      timeFormatted: '1 min 3 sec'
+    },
+    '10x': {
+      iterations: 500,
+      operations: 500,
+      time: 125,
+      timeFormatted: '2 min 5 sec'
+    }
+  },
+  networkCallsPerIteration: 1,
+  complexity: 'O(n)'
+}
+  → Convert to batch operation to achieve O(1) network calls:
+- Current: O(n) network calls
+- Optimized: O(1) batch request + O(n) CCJS processing
+- Expected 10x time: ~3 seconds (98% faster)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  MEDIUM: May experience performance issues at 10x growth (loop: iterar_no_cobrados)
+  Stage: iterar_no_cobrados
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=agregar_no_cobrados]|responses|0|[json=>parse]|uuids',
+  current: {
+    iterations: 50,
+    operations: 50,
+    timeSeconds: 13,
+    timeFormatted: '13 seconds'
+  },
+  projections: {
+    '2x': {
+      iterations: 100,
+      operations: 100,
+      time: 25,
+      timeFormatted: '25 seconds'
+    },
+    '5x': {
+      iterations: 250,
+      operations: 250,
+      time: 63,
+      timeFormatted: '1 min 3 sec'
+    },
+    '10x': {
+      iterations: 500,
+      operations: 500,
+      time: 125,
+      timeFormatted: '2 min 5 sec'
+    }
+  },
+  networkCallsPerIteration: 1,
+  complexity: 'O(n)'
+}
+  → Convert to batch operation to achieve O(1) network calls:
+- Current: O(n) network calls
+- Optimized: O(1) batch request + O(n) CCJS processing
+- Expected 10x time: ~3 seconds (98% faster)
+  Reference: trigger_formulario_optimized.js:1227
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️  HIGH: High risk of timeout at 10x growth (loop: iterar_remove)
+  Stage: iterar_remove
+  Details: {
+  loopControl: '$VALUE#sentAnswer|data|[find=>identifier=ordenes_de_servicio_eliminar_asp_fact]|responses',
+  current: {
+    iterations: 100,
+    operations: 220.00000000000003,
+    timeSeconds: 55,
+    timeFormatted: '55 seconds'
+  },
+  projections: {
+    '2x': {
+      iterations: 200,
+      operations: 440.00000000000006,
+      time: 110,
+      timeFormatted: '1 min 50 sec'
+    },
+    '5x': {
+      iterations: 500,
+      operations: 1100,
+      time: 275,
+      timeFormatted: '4 min 35 sec'
+    },
+    '10x': {
+      iterations: 1000,
+      operations: 2200,
+      time: 550,
+      timeFormatted: '9 min 10 sec'
+    }
+  },
+  networkCallsPerIteration: 2,
+  complexity: 'O(n)'
+}
+  → Convert to batch operation to achieve O(1) network calls:
+- Current: O(n) network calls
+- Optimized: O(1) batch request + O(n) CCJS processing
+- Expected 10x time: ~11 seconds (98% faster)
+  Reference: trigger_formulario_optimized.js:1227
+
+Network Efficiency Issues
+
+ℹ 4 issue(s) related to network calls
+
+
+Summary
+
+Total issues found: 24
+  Critical: 0
+  High: 5
+  Medium: 14
+  Low: 5
+
+By Type:
+  ITERATION_WITH_NETWORK_CALLS: 4
+  MISSING_OPTIMIZATION: 7
+  PERFORMANCE_ISSUE: 5
+  INEFFICIENT_PATCH_STRATEGY: 1
+  MISSING_DELTA_COMPUTATION: 2
+  PATCH_STRATEGY: 1
+  GROWTH_PROJECTION: 4
+
+Estimated Improvements:
+  Payload size: 1.17 KB → 240 Bytes (80% reduction)
+  Network calls: 350 → 4 (99% reduction)
+  Execution time: ~88 seconds → ~6 seconds (93% faster)
+
+Prioritized Recommendations
+
+
+HIGH: High Priority Optimizations (5 issue(s))
+  • Stage: iterar_remove
+    FCEach loop contains 2 network request(s) (N+1 query pattern)
+  • Stage: patch_subproperty_remove
+    Full array replacement detected (should use incremental patches)
+  • Stage: update_asset
+    CCJS stage "format_update_os" generates patches without delta computation
+
+
+
+JSON Output
+
+{
+  "routine": {
+    "name": "Unknown",
+    "id": "67ddd013c4a4a74947fcc770",
+    "channel": null,
+    "group": null,
+    "isActive": true
+  },
+  "issues": [
+    {
+      "id": "LOOP_WITH_NETWORK_CALLS",
+      "type": "ITERATION_WITH_NETWORK_CALLS",
+      "severity": "MEDIUM",
+      "stage": "iterar_",
+      "message": "FCEach loop contains 1 network request(s) (N+1 query pattern)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_precios]|responses|0|[json=>parse]|uuids",
+        "estimatedIterations": 50,
+        "networkCallsPerIteration": 1,
+        "totalNetworkCalls": 50,
+        "networkStages": [
+          "red"
+        ]
+      },
+      "recommendation": "Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.",
+      "example": "See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)",
+      "reference": "trigger_formulario_optimized.js:1227",
+      "estimatedImprovement": {
+        "networkCalls": {
+          "before": 50,
+          "after": 1,
+          "reduction": 0.98
+        },
+        "executionTime": {
+          "before": "~10 seconds",
+          "after": "~2 seconds",
+          "reduction": 0.9
+        }
+      }
+    },
+    {
+      "id": "LOOP_WITH_NETWORK_CALLS",
+      "type": "ITERATION_WITH_NETWORK_CALLS",
+      "severity": "MEDIUM",
+      "stage": "iterar_servicio",
+      "message": "FCEach loop contains 1 network request(s) (N+1 query pattern)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_servicios]|responses|0|[json=>parse]|uuids",
+        "estimatedIterations": 50,
+        "networkCallsPerIteration": 1,
+        "totalNetworkCalls": 50,
+        "networkStages": [
+          "red_2"
+        ]
+      },
+      "recommendation": "Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.",
+      "example": "See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)",
+      "reference": "trigger_formulario_optimized.js:1227",
+      "estimatedImprovement": {
+        "networkCalls": {
+          "before": 50,
+          "after": 1,
+          "reduction": 0.98
+        },
+        "executionTime": {
+          "before": "~10 seconds",
+          "after": "~2 seconds",
+          "reduction": 0.9
+        }
+      }
+    },
+    {
+      "id": "LOOP_WITH_NETWORK_CALLS",
+      "type": "ITERATION_WITH_NETWORK_CALLS",
+      "severity": "MEDIUM",
+      "stage": "iterar_no_cobrados",
+      "message": "FCEach loop contains 1 network request(s) (N+1 query pattern)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_no_cobrados]|responses|0|[json=>parse]|uuids",
+        "estimatedIterations": 50,
+        "networkCallsPerIteration": 1,
+        "totalNetworkCalls": 50,
+        "networkStages": [
+          "red_3"
+        ]
+      },
+      "recommendation": "Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.",
+      "example": "See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)",
+      "reference": "trigger_formulario_optimized.js:1227",
+      "estimatedImprovement": {
+        "networkCalls": {
+          "before": 50,
+          "after": 1,
+          "reduction": 0.98
+        },
+        "executionTime": {
+          "before": "~10 seconds",
+          "after": "~2 seconds",
+          "reduction": 0.9
+        }
+      }
+    },
+    {
+      "id": "LOOP_WITH_NETWORK_CALLS",
+      "type": "ITERATION_WITH_NETWORK_CALLS",
+      "severity": "HIGH",
+      "stage": "iterar_remove",
+      "message": "FCEach loop contains 2 network request(s) (N+1 query pattern)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=ordenes_de_servicio_eliminar_asp_fact]|responses",
+        "estimatedIterations": 100,
+        "networkCallsPerIteration": 2,
+        "totalNetworkCalls": 200,
+        "networkStages": [
+          "get_property_remove",
+          "patch_subproperty_remove"
+        ]
+      },
+      "recommendation": "Convert to batch operation using /multi endpoint or consolidated CCJS. Replace FCEach iteration with: (1) CCJS to prepare batch query, (2) Single NWRequest with all IDs, (3) CCJS to consolidate results.",
+      "example": "See trigger_formulario_optimized.js lines 1227-1285 (join_uuids → find_modify_answers → consolidate_modify_logic)",
+      "reference": "trigger_formulario_optimized.js:1227",
+      "estimatedImprovement": {
+        "networkCalls": {
+          "before": 200,
+          "after": 1,
+          "reduction": 0.995
+        },
+        "executionTime": {
+          "before": "~40 seconds",
+          "after": "~2 seconds",
+          "reduction": 0.9
+        }
+      }
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "format_update_os",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "update_asset",
+          "update_asset"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "type": "PERFORMANCE_ISSUE",
+      "severity": "LOW",
+      "stage": "format_delete_os",
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "details": {
+        "pattern": "array.filter(x => otherArray.includes(x))"
+      },
+      "recommendation": "Convert array to Set for O(1) membership testing:\nconst set = new Set(otherArray);\narray.filter(x => set.has(x));",
+      "reference": "optimization-patterns.md#performance"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "ccjs",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "patch"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "type": "PERFORMANCE_ISSUE",
+      "severity": "LOW",
+      "stage": "ccjs",
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "details": {
+        "pattern": "array.filter(x => otherArray.includes(x))"
+      },
+      "recommendation": "Convert array to Set for O(1) membership testing:\nconst set = new Set(otherArray);\narray.filter(x => set.has(x));",
+      "reference": "optimization-patterns.md#performance"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "remove_ccjs",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "patch_3"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "type": "PERFORMANCE_ISSUE",
+      "severity": "LOW",
+      "stage": "remove_ccjs",
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "details": {
+        "pattern": "array.filter(x => otherArray.includes(x))"
+      },
+      "recommendation": "Convert array to Set for O(1) membership testing:\nconst set = new Set(otherArray);\narray.filter(x => set.has(x));",
+      "reference": "optimization-patterns.md#performance"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "ccjs_servicios",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "patch_2"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "type": "PERFORMANCE_ISSUE",
+      "severity": "LOW",
+      "stage": "ccjs_servicios",
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "details": {
+        "pattern": "array.filter(x => otherArray.includes(x))"
+      },
+      "recommendation": "Convert array to Set for O(1) membership testing:\nconst set = new Set(otherArray);\narray.filter(x => set.has(x));",
+      "reference": "optimization-patterns.md#performance"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "ccjs_no_cobrados",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "patch_no_cobrados"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "type": "PERFORMANCE_ISSUE",
+      "severity": "LOW",
+      "stage": "ccjs_no_cobrados",
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "details": {
+        "pattern": "array.filter(x => otherArray.includes(x))"
+      },
+      "recommendation": "Convert array to Set for O(1) membership testing:\nconst set = new Set(otherArray);\narray.filter(x => set.has(x));",
+      "reference": "optimization-patterns.md#performance"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "ccjs_descontar_stock",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "patch_stock"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "type": "MISSING_OPTIMIZATION",
+      "severity": "MEDIUM",
+      "stage": "ccjs_bot",
+      "message": "CCJS stage missing delta computation before network request",
+      "details": {
+        "hasArrayOperation": true,
+        "hasDeltaComputation": false,
+        "downstreamRequests": [
+          "call_bot_repuestos"
+        ]
+      },
+      "recommendation": "Add Set-based delta computation to filter out existing items:\nconst currentSet = new Set(currentArray);\nconst delta = incomingArray.filter(id => !currentSet.has(id));\nThis significantly reduces payload size.",
+      "example": "See templates/ccjs/deltaComputation.js for complete pattern",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "FULL_ARRAY_PATCH",
+      "type": "INEFFICIENT_PATCH_STRATEGY",
+      "severity": "HIGH",
+      "stage": "patch_subproperty_remove",
+      "message": "Full array replacement detected (should use incremental patches)",
+      "details": {
+        "path": "/subproperty",
+        "operation": "add",
+        "estimatedSize": 1200,
+        "sizeFormatted": "1.17 KB",
+        "itemCount": 50
+      },
+      "recommendation": "Replace full array patch with incremental operations:\n1. Add CCJS stage to compute delta (items not in current array)\n2. Use path \"/-\" for each new item: { op: \"add\", path: \"/field/-\", value: item }\n3. This reduces payload from full array to only new items",
+      "example": "delta.forEach(id => jsonPatch.push({ op: \"add\", path: \"/subproperty/-\", value: id }))",
+      "reference": "trigger_formulario_optimized.js:134",
+      "fix": {
+        "currentPattern": "{\n  \"op\": \"add\",\n  \"path\": \"/subproperty\",\n  \"value\": \"$OUTPUT#ccjs_remove#data\"\n}",
+        "optimizedPattern": "// CCJS stage:\nconst current = new Set(asset.subproperty);\nconst delta = incoming.filter(id => !current.has(id));\nconst jsonPatch = delta.map(id => ({\n  op: \"add\",\n  path: \"/subproperty/-\",\n  value: id\n}));"
+      },
+      "estimatedImprovement": {
+        "payloadReduction": {
+          "before": 1200,
+          "after": 240,
+          "reduction": 0.8
+        }
+      }
+    },
+    {
+      "id": "CCJS_WITHOUT_DELTA",
+      "type": "MISSING_DELTA_COMPUTATION",
+      "severity": "HIGH",
+      "stage": "update_asset",
+      "message": "CCJS stage \"format_update_os\" generates patches without delta computation",
+      "details": {
+        "sourceStage": "format_update_os",
+        "hasIncrementalPattern": false,
+        "hasDeltaComputation": false
+      },
+      "recommendation": "Update CCJS stage to:\n1. Compute delta using Set-based filtering\n2. Generate incremental patches with \"/-\" path\n3. Return only new items to downstream stages",
+      "example": "See templates/ccjs/deltaComputation.js and templates/ccjs/jsonPatch.js",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "CCJS_WITHOUT_DELTA",
+      "type": "MISSING_DELTA_COMPUTATION",
+      "severity": "HIGH",
+      "stage": "update_asset_delete_os",
+      "message": "CCJS stage \"format_delete_os\" generates patches without delta computation",
+      "details": {
+        "sourceStage": "format_delete_os",
+        "hasIncrementalPattern": false,
+        "hasDeltaComputation": false
+      },
+      "recommendation": "Update CCJS stage to:\n1. Compute delta using Set-based filtering\n2. Generate incremental patches with \"/-\" path\n3. Return only new items to downstream stages",
+      "example": "See templates/ccjs/deltaComputation.js and templates/ccjs/jsonPatch.js",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "NON_INCREMENTAL_ADD",
+      "type": "PATCH_STRATEGY",
+      "severity": "MEDIUM",
+      "stage": "patch_subproperty_remove",
+      "message": "Add operation without incremental path (should use \"/-\" for array append)",
+      "details": {
+        "operation": "add",
+        "path": "/subproperty",
+        "suggestedPath": "/subproperty/-",
+        "patchIndex": 0
+      },
+      "recommendation": "Use incremental path \"/subproperty/-\" to append items instead of replacing entire field. This requires upstream CCJS to compute delta (only new items).",
+      "reference": "trigger_formulario_optimized.js:134"
+    },
+    {
+      "id": "SCALABILITY_CONCERN",
+      "type": "GROWTH_PROJECTION",
+      "severity": "MEDIUM",
+      "stage": "iterar_",
+      "message": "May experience performance issues at 10x growth (loop: iterar_)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_precios]|responses|0|[json=>parse]|uuids",
+        "current": {
+          "iterations": 50,
+          "operations": 50,
+          "timeSeconds": 13,
+          "timeFormatted": "13 seconds"
+        },
+        "projections": {
+          "2x": {
+            "iterations": 100,
+            "operations": 100,
+            "time": 25,
+            "timeFormatted": "25 seconds"
+          },
+          "5x": {
+            "iterations": 250,
+            "operations": 250,
+            "time": 63,
+            "timeFormatted": "1 min 3 sec"
+          },
+          "10x": {
+            "iterations": 500,
+            "operations": 500,
+            "time": 125,
+            "timeFormatted": "2 min 5 sec"
+          }
+        },
+        "networkCallsPerIteration": 1,
+        "complexity": "O(n)"
+      },
+      "recommendation": "Convert to batch operation to achieve O(1) network calls:\n- Current: O(n) network calls\n- Optimized: O(1) batch request + O(n) CCJS processing\n- Expected 10x time: ~3 seconds (98% faster)",
+      "reference": "trigger_formulario_optimized.js:1227"
+    },
+    {
+      "id": "SCALABILITY_CONCERN",
+      "type": "GROWTH_PROJECTION",
+      "severity": "MEDIUM",
+      "stage": "iterar_servicio",
+      "message": "May experience performance issues at 10x growth (loop: iterar_servicio)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_servicios]|responses|0|[json=>parse]|uuids",
+        "current": {
+          "iterations": 50,
+          "operations": 50,
+          "timeSeconds": 13,
+          "timeFormatted": "13 seconds"
+        },
+        "projections": {
+          "2x": {
+            "iterations": 100,
+            "operations": 100,
+            "time": 25,
+            "timeFormatted": "25 seconds"
+          },
+          "5x": {
+            "iterations": 250,
+            "operations": 250,
+            "time": 63,
+            "timeFormatted": "1 min 3 sec"
+          },
+          "10x": {
+            "iterations": 500,
+            "operations": 500,
+            "time": 125,
+            "timeFormatted": "2 min 5 sec"
+          }
+        },
+        "networkCallsPerIteration": 1,
+        "complexity": "O(n)"
+      },
+      "recommendation": "Convert to batch operation to achieve O(1) network calls:\n- Current: O(n) network calls\n- Optimized: O(1) batch request + O(n) CCJS processing\n- Expected 10x time: ~3 seconds (98% faster)",
+      "reference": "trigger_formulario_optimized.js:1227"
+    },
+    {
+      "id": "SCALABILITY_CONCERN",
+      "type": "GROWTH_PROJECTION",
+      "severity": "MEDIUM",
+      "stage": "iterar_no_cobrados",
+      "message": "May experience performance issues at 10x growth (loop: iterar_no_cobrados)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=agregar_no_cobrados]|responses|0|[json=>parse]|uuids",
+        "current": {
+          "iterations": 50,
+          "operations": 50,
+          "timeSeconds": 13,
+          "timeFormatted": "13 seconds"
+        },
+        "projections": {
+          "2x": {
+            "iterations": 100,
+            "operations": 100,
+            "time": 25,
+            "timeFormatted": "25 seconds"
+          },
+          "5x": {
+            "iterations": 250,
+            "operations": 250,
+            "time": 63,
+            "timeFormatted": "1 min 3 sec"
+          },
+          "10x": {
+            "iterations": 500,
+            "operations": 500,
+            "time": 125,
+            "timeFormatted": "2 min 5 sec"
+          }
+        },
+        "networkCallsPerIteration": 1,
+        "complexity": "O(n)"
+      },
+      "recommendation": "Convert to batch operation to achieve O(1) network calls:\n- Current: O(n) network calls\n- Optimized: O(1) batch request + O(n) CCJS processing\n- Expected 10x time: ~3 seconds (98% faster)",
+      "reference": "trigger_formulario_optimized.js:1227"
+    },
+    {
+      "id": "SCALABILITY_CONCERN",
+      "type": "GROWTH_PROJECTION",
+      "severity": "HIGH",
+      "stage": "iterar_remove",
+      "message": "High risk of timeout at 10x growth (loop: iterar_remove)",
+      "details": {
+        "loopControl": "$VALUE#sentAnswer|data|[find=>identifier=ordenes_de_servicio_eliminar_asp_fact]|responses",
+        "current": {
+          "iterations": 100,
+          "operations": 220.00000000000003,
+          "timeSeconds": 55,
+          "timeFormatted": "55 seconds"
+        },
+        "projections": {
+          "2x": {
+            "iterations": 200,
+            "operations": 440.00000000000006,
+            "time": 110,
+            "timeFormatted": "1 min 50 sec"
+          },
+          "5x": {
+            "iterations": 500,
+            "operations": 1100,
+            "time": 275,
+            "timeFormatted": "4 min 35 sec"
+          },
+          "10x": {
+            "iterations": 1000,
+            "operations": 2200,
+            "time": 550,
+            "timeFormatted": "9 min 10 sec"
+          }
+        },
+        "networkCallsPerIteration": 2,
+        "complexity": "O(n)"
+      },
+      "recommendation": "Convert to batch operation to achieve O(1) network calls:\n- Current: O(n) network calls\n- Optimized: O(1) batch request + O(n) CCJS processing\n- Expected 10x time: ~11 seconds (98% faster)",
+      "reference": "trigger_formulario_optimized.js:1227"
+    }
+  ],
+  "summary": {
+    "total": 24,
+    "bySeverity": {
+      "CRITICAL": 0,
+      "HIGH": 5,
+      "MEDIUM": 14,
+      "LOW": 5
+    },
+    "byType": {
+      "ITERATION_WITH_NETWORK_CALLS": 4,
+      "MISSING_OPTIMIZATION": 7,
+      "PERFORMANCE_ISSUE": 5,
+      "INEFFICIENT_PATCH_STRATEGY": 1,
+      "MISSING_DELTA_COMPUTATION": 2,
+      "PATCH_STRATEGY": 1,
+      "GROWTH_PROJECTION": 4
+    },
+    "byAnalyzer": {
+      "loop": {
+        "total": 4,
+        "bySeverity": {
+          "CRITICAL": 0,
+          "HIGH": 1,
+          "MEDIUM": 3,
+          "LOW": 0
+        },
+        "byType": {
+          "ITERATION_WITH_NETWORK_CALLS": 4
+        }
+      },
+      "payload": {
+        "total": 13,
+        "bySeverity": {
+          "CRITICAL": 0,
+          "HIGH": 1,
+          "MEDIUM": 7,
+          "LOW": 5
+        },
+        "byType": {
+          "MISSING_OPTIMIZATION": 7,
+          "PERFORMANCE_ISSUE": 5,
+          "INEFFICIENT_PATCH_STRATEGY": 1
+        },
+        "totalPayloadReduction": 0.8
+      },
+      "patch": {
+        "total": 3,
+        "bySeverity": {
+          "CRITICAL": 0,
+          "HIGH": 2,
+          "MEDIUM": 1,
+          "LOW": 0
+        },
+        "byType": {
+          "MISSING_DELTA_COMPUTATION": 2,
+          "PATCH_STRATEGY": 1
+        },
+        "totalPayloadReduction": 0
+      },
+      "scalability": {
+        "total": 4,
+        "bySeverity": {
+          "CRITICAL": 0,
+          "HIGH": 1,
+          "MEDIUM": 3,
+          "LOW": 0
+        },
+        "byType": {
+          "GROWTH_PROJECTION": 4
+        },
+        "worstCaseProjection": {
+          "stage": "iterar_",
+          "timeSeconds": 125,
+          "timeFormatted": "2 min 5 sec",
+          "operations": 500
+        }
+      }
+    }
+  },
+  "estimatedImprovements": {
+    "networkCallReduction": {
+      "before": 350,
+      "after": 4,
+      "reduction": 0.9885714285714285
+    },
+    "payloadReduction": {
+      "before": 1200,
+      "after": 240,
+      "reduction": 0.8
+    },
+    "executionTime": {
+      "before": 88,
+      "after": 6,
+      "reduction": 0.9318181818181818
+    }
+  }
+}

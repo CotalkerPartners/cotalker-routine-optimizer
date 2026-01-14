@@ -1,0 +1,11 @@
+{
+  "key": "send_error_message",
+  "name": "PBMessage",
+  "data": {
+    "channelIds": ["$VALUE#channel"],
+    "content": "⚠️ Ha ocurrido un error en la rutina de facturación.\n\nPor favor contacte al administrador del sistema para revisar el problema.\n\nDetalles técnicos:\n- Etapa con error: {{STAGE_KEY}}\n- Fecha: {{TIMESTAMP}}"
+  },
+  "next": {
+    "SUCCESS": ""
+  }
+}

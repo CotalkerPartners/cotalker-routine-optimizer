@@ -1,0 +1,172 @@
+{
+  "patterns": [
+    {
+      "id": "LOOP_WITH_NETWORK_CALLS",
+      "severity": "CRITICAL",
+      "detect": {
+        "stageType": "FCEach",
+        "hasChildType": "NWRequest"
+      },
+      "message": "FCEach loop contains network requests (N+1 query pattern)",
+      "recommendation": "Convert to batch operation using /multi endpoint or consolidated CCJS",
+      "reference": "trigger_formulario_optimized.js:1227",
+      "exampleFix": {
+        "description": "Replace FCEach iteration with batch query",
+        "before": "FCEach → NWRequest per iteration",
+        "after": "CCJS (prepare query) → Single NWRequest (batch) → CCJS (consolidate)"
+      }
+    },
+    {
+      "id": "FULL_ARRAY_PATCH",
+      "severity": "HIGH",
+      "detect": {
+        "stageType": "NWRequest",
+        "bodyContains": {
+          "op": "add",
+          "pathPattern": "^/[^/]+$"
+        }
+      },
+      "message": "Full array replacement detected (should use incremental patches)",
+      "recommendation": "Add CCJS delta computation, use path '/-' for append operations",
+      "reference": "trigger_formulario_optimized.js:134",
+      "exampleFix": {
+        "description": "Use incremental JSON Patch instead of full replacement",
+        "before": "{ op: 'add', path: '/field', value: [entire array] }",
+        "after": "delta.forEach(id => jsonPatch.push({ op: 'add', path: '/field/-', value: id }))"
+      }
+    },
+    {
+      "id": "MISSING_ERROR_ROUTING",
+      "severity": "MEDIUM",
+      "detect": {
+        "stageType": ["NWRequest", "PBScript"],
+        "next": {
+          "ERROR": ""
+        }
+      },
+      "message": "Critical stage missing error handler",
+      "recommendation": "Add global error handler stage and route ERROR → send_error_message",
+      "reference": "trigger_formulario_optimized.js:1642",
+      "exampleFix": {
+        "description": "Add error routing to critical stages",
+        "before": "next: { SUCCESS: 'next_stage', ERROR: '' }",
+        "after": "next: { SUCCESS: 'next_stage', ERROR: 'send_error_message' }"
+      }
+    },
+    {
+      "id": "NO_BYPASS_SWITCH",
+      "severity": "MEDIUM",
+      "detect": {
+        "stageType": "FCEach",
+        "controlFromOutput": true,
+        "noUpstreamCheck": true
+      },
+      "message": "Loop without bypass switch (runs even if no data)",
+      "recommendation": "Add FCSwitchOne check with hasItems boolean from CCJS",
+      "reference": "trigger_formulario_optimized.js:1372",
+      "exampleFix": {
+        "description": "Add conditional check before loop",
+        "before": "CCJS → FCEach (runs even if empty)",
+        "after": "CCJS (returns hasItems) → FCSwitchOne → FCEach (only if hasItems=true)"
+      }
+    },
+    {
+      "id": "COTLANG_WRONG_DELIMITER",
+      "severity": "HIGH",
+      "detect": {
+        "expressionPattern": "\\$VALUE#[^#]+#[^#]+(?<!\\$[A-Z]+#[^#]+#[^#]+)"
+      },
+      "message": "Incorrect COTLang delimiter (using # for object navigation instead of |)",
+      "recommendation": "Use | for object keys, # for command arguments",
+      "reference": "cotalker_routines.md:7-9",
+      "exampleFix": {
+        "description": "Fix delimiter usage in COTLang expression",
+        "before": "$VALUE#sentAnswer#data#process",
+        "after": "$VALUE#sentAnswer|data|process"
+      }
+    },
+    {
+      "id": "MISSING_DELTA_COMPUTATION",
+      "severity": "HIGH",
+      "detect": {
+        "stageType": "CCJS",
+        "followedBy": "NWRequest",
+        "missingPattern": "new Set.*filter.*!.*has"
+      },
+      "message": "CCJS stage sending full arrays instead of computing delta",
+      "recommendation": "Add Set-based deduplication and delta filtering",
+      "reference": "trigger_formulario_optimized.js:134",
+      "exampleFix": {
+        "description": "Compute delta before sending",
+        "before": "return { allItems: incoming };",
+        "after": "const currentSet = new Set(current); const delta = incoming.filter(id => !currentSet.has(id)); return { delta };"
+      }
+    },
+    {
+      "id": "UNSAFE_JSON_PARSING",
+      "severity": "MEDIUM",
+      "detect": {
+        "stageType": "CCJS",
+        "srcContains": "JSON.parse",
+        "missingPattern": "try.*catch"
+      },
+      "message": "JSON.parse without error handling (will crash on malformed data)",
+      "recommendation": "Use safeJSON helper function",
+      "reference": "trigger_formulario_optimized.js:549",
+      "exampleFix": {
+        "description": "Add safe JSON parsing",
+        "before": "const data = JSON.parse(input);",
+        "after": "const safeJSON = (val, def) => { if (val == null) return def; try { return JSON.parse(val.trim()); } catch { return def; } }; const data = safeJSON(input, {});"
+      }
+    },
+    {
+      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "severity": "LOW",
+      "detect": {
+        "stageType": "CCJS",
+        "srcContains": ".filter(.*\\.includes\\("
+      },
+      "message": "Using array.includes() in filter (O(n²) complexity)",
+      "recommendation": "Convert to Set for O(1) membership testing",
+      "reference": "trigger_formulario_optimized.js:134",
+      "exampleFix": {
+        "description": "Replace includes with Set.has",
+        "before": "items.filter(id => existing.includes(id))",
+        "after": "const existingSet = new Set(existing); items.filter(id => existingSet.has(id))"
+      }
+    },
+    {
+      "id": "NESTED_FCEACH_LOOPS",
+      "severity": "CRITICAL",
+      "detect": {
+        "stageType": "FCEach",
+        "hasDescendantType": "FCEach"
+      },
+      "message": "Nested FCEach loops (O(n²) complexity, potential timeout)",
+      "recommendation": "Flatten loops using CCJS preprocessing",
+      "reference": "optimization-patterns.md",
+      "exampleFix": {
+        "description": "Eliminate nested loops",
+        "before": "FCEach (outer) → FCEach (inner) → NWRequest",
+        "after": "CCJS (flatten data) → Single batch operation"
+      }
+    },
+    {
+      "id": "MISSING_SAFEARRAY_CHECK",
+      "severity": "LOW",
+      "detect": {
+        "stageType": "CCJS",
+        "srcContains": "data\\.[a-zA-Z]+\\.(map|filter|forEach)",
+        "missingPattern": "Array\\.isArray"
+      },
+      "message": "Array method called without checking if value is array",
+      "recommendation": "Add Array.isArray() check before array operations",
+      "reference": "trigger_formulario_optimized.js:134",
+      "exampleFix": {
+        "description": "Add array validation",
+        "before": "const result = data.items.map(x => x.id);",
+        "after": "const items = Array.isArray(data.items) ? data.items : []; const result = items.map(x => x.id);"
+      }
+    }
+  ]
+}
