@@ -1,4 +1,4 @@
-# Cotalker Optimizer
+# Cotalker Routine Optimizer
 
 CLI tool to analyze and optimize Cotalker bot routines, detecting anti-patterns, estimating payload sizes, validating COTLang syntax, and generating optimized versions.
 
@@ -58,7 +58,7 @@ npm start validate-cotlang "\$VALUE#sentAnswer|data|[find=>identifier=field]" --
 ## Architecture
 
 ```
-cotalker-optimizer/
+cotalker-routine-optimizer/
 ├── src/
 │   ├── cli.js                      # Entry point
 │   ├── analyzers/                  # Analysis modules

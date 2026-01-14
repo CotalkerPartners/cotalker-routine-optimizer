@@ -1,5 +1,5 @@
 {
-  "name": "cotalker-optimizer",
+  "name": "cotalker-routine-optimizer",
   "version": "1.0.0",
   "description": "CLI tool to analyze and optimize Cotalker bot routines",
   "main": "src/cli.js",

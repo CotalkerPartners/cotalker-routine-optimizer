@@ -1,9 +1,9 @@
-# Guía de Inicio Rápido - Cotalker Optimizer
+# Guía de Inicio Rápido - Cotalker Routine Optimizer
 
 ## Instalación
 
 ```bash
-cd /Users/juliocotalker/Develop/cotalker-optimizer
+cd /Users/juliocotalker/Develop/cotalker-routine-optimizer
 npm install
 ```
 
@@ -213,7 +213,7 @@ node src/cli.js analyze rutina.js --checks loop,payload,patch,scalability
 ## Contacto
 
 Para bugs o sugerencias, edita directamente el código en:
-- `/Users/juliocotalker/Develop/cotalker-optimizer/`
+- `/Users/juliocotalker/Develop/cotalker-routine-optimizer/`
 
 ## Referencias
 
