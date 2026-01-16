@@ -24,16 +24,19 @@
         "bodyContains": {
           "op": "add",
           "pathPattern": "^/[^/]+$"
-        }
+        },
+        "estimatedPayloadSize": ">1MB"
       },
-      "message": "Full array replacement detected (should use incremental patches)",
-      "recommendation": "Add CCJS delta computation, use path '/-' for append operations",
+      "message": "Full array replacement detected with large payload (should use incremental patches)",
+      "recommendation": "Add CCJS delta computation, use path '/-' for append operations. See trade-offs.md for when full replacement is acceptable.",
       "reference": "trigger_formulario_optimized.js:134",
       "exampleFix": {
         "description": "Use incremental JSON Patch instead of full replacement",
         "before": "{ op: 'add', path: '/field', value: [entire array] }",
         "after": "delta.forEach(id => jsonPatch.push({ op: 'add', path: '/field/-', value: id }))"
-      }
+      },
+      "canSuppress": true,
+      "suppressComment": "full-array-patch-justified: initial sync operation"
     },
     {
       "id": "MISSING_ERROR_ROUTING",
@@ -55,20 +58,23 @@
     },
     {
       "id": "NO_BYPASS_SWITCH",
-      "severity": "MEDIUM",
+      "severity": "LOW",
       "detect": {
         "stageType": "FCEach",
         "controlFromOutput": true,
-        "noUpstreamCheck": true
+        "noUpstreamCheck": true,
+        "estimatedEmptyFrequency": ">30%"
       },
-      "message": "Loop without bypass switch (runs even if no data)",
-      "recommendation": "Add FCSwitchOne check with hasItems boolean from CCJS",
+      "message": "Loop frequently runs with empty data (consider adding bypass switch)",
+      "recommendation": "Add FCSwitchOne check with hasItems boolean from CCJS. Cost effective when loop body is expensive or empty cases are frequent (>30%). See trade-offs.md.",
       "reference": "trigger_formulario_optimized.js:1372",
       "exampleFix": {
         "description": "Add conditional check before loop",
         "before": "CCJS → FCEach (runs even if empty)",
         "after": "CCJS (returns hasItems) → FCSwitchOne → FCEach (only if hasItems=true)"
-      }
+      },
+      "canSuppress": true,
+      "suppressComment": "bypass-switch-not-needed: loop body is trivial / empty case is rare"
     },
     {
       "id": "COTLANG_WRONG_DELIMITER",
@@ -78,7 +84,7 @@
       },
       "message": "Incorrect COTLang delimiter (using # for object navigation instead of |)",
       "recommendation": "Use | for object keys, # for command arguments",
-      "reference": "cotalker_routines.md:7-9",
+      "reference": "cotlang-reference.md",
       "exampleFix": {
         "description": "Fix delimiter usage in COTLang expression",
         "before": "$VALUE#sentAnswer#data#process",
@@ -86,21 +92,32 @@
       }
     },
     {
-      "id": "MISSING_DELTA_COMPUTATION",
+      "id": "LARGE_PAYLOAD_WITHOUT_DELTA",
       "severity": "HIGH",
       "detect": {
         "stageType": "CCJS",
         "followedBy": "NWRequest",
-        "missingPattern": "new Set.*filter.*!.*has"
+        "estimatedPayloadSize": ">1MB",
+        "hasPreviousVersion": true,
+        "sendingFullDataset": true
       },
-      "message": "CCJS stage sending full arrays instead of computing delta",
-      "recommendation": "Add Set-based deduplication and delta filtering",
+      "message": "CCJS stage sending large payload (>1MB) without delta computation",
+      "recommendation": "Compute delta between current and new state. Implementation can use Set, Map, diff algorithms, or other strategies. See trade-offs.md for guidance.",
       "reference": "trigger_formulario_optimized.js:134",
       "exampleFix": {
-        "description": "Compute delta before sending",
+        "description": "Compute delta before sending (example using Set)",
         "before": "return { allItems: incoming };",
         "after": "const currentSet = new Set(current); const delta = incoming.filter(id => !currentSet.has(id)); return { delta };"
-      }
+      },
+      "alternativeImplementations": [
+        "Set-based filtering (recommended for simple ID arrays)",
+        "Map-based for complex object comparison",
+        "fast-diff library for large datasets",
+        "Immutable.js with structural sharing",
+        "Custom diff algorithm for domain-specific needs"
+      ],
+      "canSuppress": true,
+      "suppressComment": "delta-not-needed: first initialization / reset operation"
     },
     {
       "id": "UNSAFE_JSON_PARSING",
@@ -108,31 +125,46 @@
       "detect": {
         "stageType": "CCJS",
         "srcContains": "JSON.parse",
-        "missingPattern": "try.*catch"
+        "missingPattern": "try.*catch",
+        "noSchemaValidation": true
       },
       "message": "JSON.parse without error handling (will crash on malformed data)",
-      "recommendation": "Use safeJSON helper function",
+      "recommendation": "Use safeJSON helper function or schema validation library",
       "reference": "trigger_formulario_optimized.js:549",
       "exampleFix": {
         "description": "Add safe JSON parsing",
         "before": "const data = JSON.parse(input);",
         "after": "const safeJSON = (val, def) => { if (val == null) return def; try { return JSON.parse(val.trim()); } catch { return def; } }; const data = safeJSON(input, {});"
-      }
+      },
+      "alternativeImplementations": [
+        "safeJSON helper function (recommended for CCJS)",
+        "Zod schema validation with .parse()",
+        "Yup validation",
+        "io-ts runtime type checking"
+      ],
+      "canSuppress": true,
+      "suppressComment": "json-parsing-safe: validated by schema / TypeScript types / upstream validation"
     },
     {
-      "id": "ARRAY_INCLUDES_IN_LOOP",
+      "id": "INEFFICIENT_MEMBERSHIP_TEST",
       "severity": "LOW",
       "detect": {
         "stageType": "CCJS",
-        "srcContains": ".filter(.*\\.includes\\("
+        "srcContains": ".filter(.*\\.includes\\(",
+        "estimatedArraySize": ">100"
       },
-      "message": "Using array.includes() in filter (O(n²) complexity)",
-      "recommendation": "Convert to Set for O(1) membership testing",
+      "message": "Using array.includes() in filter with large arrays (O(n²) complexity)",
+      "recommendation": "Convert to Set for O(1) membership testing when array size >100",
       "reference": "trigger_formulario_optimized.js:134",
       "exampleFix": {
-        "description": "Replace includes with Set.has",
+        "description": "Replace includes with Set.has for better performance",
         "before": "items.filter(id => existing.includes(id))",
         "after": "const existingSet = new Set(existing); items.filter(id => existingSet.has(id))"
+      },
+      "performanceImpact": {
+        "small": "Negligible for arrays <100 elements",
+        "medium": "Noticeable for arrays 100-1000 elements",
+        "large": "Critical for arrays >1000 elements"
       }
     },
     {
@@ -152,21 +184,52 @@
       }
     },
     {
-      "id": "MISSING_SAFEARRAY_CHECK",
+      "id": "MISSING_ARRAY_VALIDATION",
       "severity": "LOW",
       "detect": {
         "stageType": "CCJS",
         "srcContains": "data\\.[a-zA-Z]+\\.(map|filter|forEach)",
-        "missingPattern": "Array\\.isArray"
+        "missingPattern": "Array\\.isArray",
+        "noTypeSystem": true
       },
       "message": "Array method called without checking if value is array",
-      "recommendation": "Add Array.isArray() check before array operations",
+      "recommendation": "Add Array.isArray() check before array operations, or use TypeScript/schema validation",
       "reference": "trigger_formulario_optimized.js:134",
       "exampleFix": {
         "description": "Add array validation",
         "before": "const result = data.items.map(x => x.id);",
         "after": "const items = Array.isArray(data.items) ? data.items : []; const result = items.map(x => x.id);"
-      }
+      },
+      "canSuppress": true,
+      "suppressComment": "array-validation-not-needed: TypeScript types enforce / schema validation present / upstream guarantees type"
+    },
+    {
+      "id": "EXCESSIVE_LOOP_ITERATIONS",
+      "severity": "HIGH",
+      "detect": {
+        "stageType": "FCEach",
+        "estimatedIterations": ">1000",
+        "bodyContainsNetworkCall": true
+      },
+      "message": "Loop with excessive iterations and network calls (potential timeout)",
+      "recommendation": "Consider batch operations, pagination, or async processing for >1000 iterations with network I/O",
+      "reference": "trade-offs.md",
+      "exampleFix": {
+        "description": "Use batch operations instead of individual requests",
+        "before": "FCEach (1000+ iterations) → NWRequest",
+        "after": "CCJS (chunk into batches of 100) → FCEach (10 batches) → NWRequest (/multi endpoint)"
+      },
+      "thresholds": {
+        "warning": 500,
+        "error": 1000,
+        "critical": 5000
+      },
+      "reasoning": "Based on Lambda timeout (15min max) and average network call time (250ms), not arbitrary limits"
     }
-  ]
+  ],
+  "metadata": {
+    "version": "2.0.0",
+    "lastUpdated": "2026-01-16",
+    "philosophy": "Detect problematic behaviors, not specific implementations. Allow suppression with justification. Consider context and trade-offs."
+  }
 }
