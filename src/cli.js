@@ -16,6 +16,12 @@ import {
 } from './analyzers/index.js';
 import { logger, logIssue, logSummary } from './utils/logger.js';
 import { formatBytes } from './utils/payload-estimator.js';
+import { generateDocumentation } from './generators/documentationGenerator.js';
+import { generateMarkdown } from './generators/formats/markdownGenerator.js';
+import { generateHTML } from './generators/formats/htmlGenerator.js';
+import { generateJSON } from './generators/formats/jsonGenerator.js';
+import { writeFileSync } from 'fs';
+import { resolve } from 'path';
 
 const program = new Command();
 
@@ -189,6 +195,118 @@ program
 
     } catch (error) {
       logger.error(`Failed to analyze routine: ${error.message}`);
+      if (error.stack) {
+        console.error(error.stack);
+      }
+      process.exit(1);
+    }
+  });
+
+/**
+ * Document command
+ */
+program
+  .command('document <file>')
+  .description('Generate comprehensive documentation for a routine')
+  .option('-f, --format <format>', 'Output format (markdown|html|json)', 'markdown')
+  .option('-o, --output <file>', 'Output file path')
+  .option('--include-analysis', 'Include analysis results in documentation')
+  .option('--sections <sections>', 'Sections to include (comma-separated)', 'all')
+  .action(async (file, options) => {
+    try {
+      logger.section('Generating Routine Documentation');
+      logger.info(`File: ${logger.path(file)}`);
+      logger.info(`Format: ${options.format}`);
+      console.log('');
+
+      // Parse routine
+      logger.info('Parsing routine...');
+      const routine = parseRoutineFile(file);
+      logger.success(`Parsed ${routine.surveyTriggers.length} trigger(s)`);
+      console.log('');
+
+      // Optionally run analysis
+      let analysisResults = null;
+      if (options.includeAnalysis) {
+        logger.info('Running analysis...');
+        analysisResults = analyzeRoutine(routine, {
+          checks: ['loop', 'payload', 'patch', 'scalability'],
+          severityFilter: 'all',
+          context: {}
+        });
+        logger.success(`Analysis complete: ${analysisResults.issues.length} issue(s) found`);
+        console.log('');
+      }
+
+      // Parse sections option
+      const sections = options.sections === 'all'
+        ? ['all']
+        : options.sections.split(',').map(s => s.trim());
+
+      // Generate documentation structure
+      logger.info('Generating documentation structure...');
+      const docs = generateDocumentation(routine, {
+        includeAnalysis: options.includeAnalysis,
+        analysisResults,
+        sections
+      });
+      logger.success('Documentation structure created');
+      console.log('');
+
+      // Generate output in requested format
+      logger.info(`Generating ${options.format.toUpperCase()} output...`);
+      let output;
+      let defaultExtension;
+
+      switch (options.format.toLowerCase()) {
+        case 'markdown':
+        case 'md':
+          output = generateMarkdown(docs);
+          defaultExtension = 'md';
+          break;
+
+        case 'html':
+          output = generateHTML(docs);
+          defaultExtension = 'html';
+          break;
+
+        case 'json':
+          output = generateJSON(docs);
+          defaultExtension = 'json';
+          break;
+
+        default:
+          logger.error(`Unsupported format: ${options.format}`);
+          logger.info('Supported formats: markdown, html, json');
+          process.exit(1);
+      }
+
+      // Determine output destination
+      if (options.output) {
+        const outputPath = resolve(options.output);
+        writeFileSync(outputPath, output, 'utf8');
+        logger.success(`Documentation written to: ${logger.path(outputPath)}`);
+      } else {
+        // Output to stdout
+        console.log('');
+        console.log(output);
+      }
+
+      // Summary
+      console.log('');
+      logger.section('Documentation Summary');
+      logger.info(`Total stages: ${docs.stages.length}`);
+      logger.info(`COTLang expressions: ${docs.cotlang.totalExpressions}`);
+      logger.info(`Data dependencies: ${Object.keys(docs.dataFlow.dependencies).length}`);
+
+      if (docs.analysis) {
+        logger.info(`Issues found: ${docs.analysis.summary.totalIssues}`);
+      }
+
+      console.log('');
+
+    } catch (error) {
+      logger.error(`Failed to generate documentation: ${error.message}`);
       if (error.stack) {
         console.error(error.stack);
       }
