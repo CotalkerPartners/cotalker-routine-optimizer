@@ -1,223 +1,113 @@
-# Guía de Inicio Rápido - Cotalker Routine Optimizer
+# Quick Start - Cotalker Routine Optimizer
 
-## Instalación
+Asistente inteligente para optimizar rutinas Cotalker con Claude Code.
+
+## Setup (una vez)
 
 ```bash
-cd /Users/juliocotalker/Develop/cotalker-routine-optimizer
 npm install
 ```
 
-## Uso Básico
+## Workflow básico
 
-### 1. Analizar una Rutina
-
-**Análisis completo (todos los checks):**
-```bash
-node src/cli.js analyze <ruta-a-tu-rutina.js>
-```
-
-Ejemplo:
-```bash
-node src/cli.js analyze tests/fixtures/original-routine.js
-```
-
-### 2. Ver Solo Problemas Críticos
+### 1. Exporta tu rutina desde MongoDB
 
 ```bash
-node src/cli.js analyze <rutina.js> --severity critical
+# MongoDB Compass: Click derecho → Copy Document
+# O usando mongosh:
+db.routines.findOne({_id: ObjectId("...")})
 ```
 
-Esto te muestra solo:
-- Timeouts potenciales (>10 min a 10x growth)
-- Payloads >6MB (error 413)
-- Loops con 200+ network calls
-
-### 3. Analizar Aspectos Específicos
-
-**Solo memoria/payload:**
-```bash
-node src/cli.js analyze <rutina.js> --checks payload,patch
-```
-
-**Solo timeout/escalabilidad:**
-```bash
-node src/cli.js analyze <rutina.js> --checks loop,scalability
-```
-
-**Checks disponibles:**
-- `loop` - Detecta loops con N+1 patterns
-- `payload` - Estima tamaños de payloads
-- `patch` - Analiza estrategias de JSON Patch
-- `scalability` - Proyecta timeouts y crecimiento
-
-### 4. Exportar Resultados en JSON
+### 2. Guárdala en el proyecto
 
 ```bash
-node src/cli.js analyze <rutina.js> -f json > reporte.json
+cp ~/Downloads/mi-rutina.json routines/input/current.json
 ```
 
-## Interpretando los Resultados
-
-### Niveles de Severidad
-
-- **🔴 CRITICAL** - Acción inmediata requerida
-  - Payload >6MB → Error 413 garantizado
-  - Timeout >15min a 10x → Excede límite Lambda
-
-- **🟠 HIGH** - Alta prioridad antes de producción
-  - Payload >3MB → Alto riesgo de 413
-  - Timeout >5min a 10x → Riesgo de timeout
-  - 200+ network calls → Performance crítica
-
-- **🟡 MEDIUM** - Optimización recomendada
-  - Payload >1MB → Debería optimizarse
-  - 50-200 network calls → Puede mejorar
-
-- **⚪ LOW** - Mejoras menores
-  - Código puede ser más eficiente
-
-### Métricas Importantes
-
-**Network Calls:**
-- Antes: Total de llamadas en implementación actual
-- Después: Llamadas con optimización (batch)
-- Reducción: % de mejora esperado
-
-**Payload Size:**
-- Antes: Tamaño actual estimado
-- Después: Con delta computation
-- Reducción: Ahorro de memoria/bandwidth
-
-**Execution Time:**
-- Proyección a 10x growth
-- Tiempo actual vs optimizado
-- Identifica si hay riesgo de timeout
-
-## Ejemplo Práctico
-
-### Problema Detectado:
+### 3. Trabaja con Claude Code
 
 ```
-⛔ CRITICAL: FCEach loop contains 5 network request(s) (N+1 query pattern)
-  Stage: iterar_remove
-
-  Current: 100 iterations × 5 network calls = 500 total calls
-  At 10x: 1,000 iterations × 5 = 5,000 calls (~22 minutes) ⚠️ TIMEOUT
-
-  Recommendation: Convert to batch operation
-  Expected after optimization: 1 network call (~5 seconds)
+"Revisa @routines/input/current.json y optimízala"
 ```
 
-### Lo Que Significa:
+Claude Code automáticamente:
+- ✅ Analiza usando knowledge base
+- ✅ Detecta anti-patterns
+- ✅ Valida endpoints con curl
+- ✅ Genera versión optimizada
+- ✅ Guarda todo en `.sessions/TIMESTAMP/`
 
-1. **Problema:** Loop itera 100 veces, cada iteración hace 5 requests HTTP
-2. **Impacto Actual:** ~2 minutos de ejecución
-3. **Impacto Futuro:** A 10x crecimiento = 22 minutos (excede límite Lambda)
-4. **Solución:** Consolidar en 1 batch request + CCJS processing
-
-### Cómo Solucionarlo:
-
-Ver templates en:
-- `templates/ccjs/deltaComputation.js` - Para calcular deltas
-- `templates/ccjs/jsonPatch.js` - Para generar patches incrementales
-- `knowledge/optimization-patterns.md` - Patrones de optimización
-
-## Formatos de Entrada Soportados
-
-La herramienta acepta:
-
-1. **Módulos JavaScript:**
-```javascript
-module.exports = {
-  surveyTriggers: [...]
-};
-```
-
-2. **MongoDB JSON Export:**
-```json
-{
-  "_id": ObjectId("..."),
-  "surveyTriggers": [...]
-}
-```
-
-Ambos formatos se parsean automáticamente.
-
-## Tips
-
-### Para Rutinas en Producción:
-
-1. **Primero:** Analiza con `--severity critical`
-   - Identifica problemas que pueden causar downtime
-
-2. **Segundo:** Revisa proyecciones de escalabilidad
-   - ¿A 10x growth sigue funcionando?
-
-3. **Tercero:** Optimiza payload si >1MB
-   - Previene errores 413 futuros
-
-### Para Desarrollo:
-
-1. **Durante diseño:** Ejecuta análisis completo
-2. **Antes de merge:** Verifica que no haya CRITICAL
-3. **Después de cambios:** Compara métricas
-
-## Opciones Avanzadas
-
-### Combinar Filtros
+### 4. Revisa resultados
 
 ```bash
-# Solo críticos de payload y loops
-node src/cli.js analyze rutina.js --checks payload,loop --severity critical
+ls .sessions/latest/
+# - optimized.json  (rutina mejorada)
+# - analysis.md     (qué cambió)
+# - changes.diff    (diferencias)
 ```
 
-### Analizar Múltiples Rutinas
+## Comandos útiles
 
 ```bash
-for file in rutinas/*.js; do
-  echo "=== Analyzing $file ==="
-  node src/cli.js analyze "$file" --severity high
-done
+# Ver última sesión
+ls -la .sessions/latest/
+
+# Limpiar sesiones antiguas
+rm -rf .sessions/*
+
+# Organizar archivos del root (si tienes archivos sueltos)
+bash scripts/organize-existing-files.sh
 ```
 
-## Troubleshooting
+## Ejemplos de interacción
 
-### Error: "Could not find module.exports"
+```
+# Análisis
+"Detecta anti-patterns en la rutina"
+"¿Cuántos stages tiene? ¿Hay loops problemáticos?"
 
-Tu archivo debe exportar el objeto de configuración:
-```javascript
-module.exports = { ... };
+# Validación
+"Valida que todos los endpoints existan"
+"Verifica las rutinas referenciadas"
+
+# Optimización
+"Optimiza el loop iterar_propiedades"
+"Reduce el payload de update_task"
+"Agrega manejo de errores"
+
+# Documentación
+"Genera documentación en Markdown con diagrama Mermaid"
 ```
 
-O ser JSON válido con `surveyTriggers`.
+## Anti-patterns comunes
 
-### Error: "Failed to parse"
+### N+1 Query
+**Problema**: FCEach loop con NWRequest (200+ llamadas)
+**Solución**: Batch endpoint `/multi` (1 llamada)
 
-Verifica que tu archivo sea:
-- JavaScript válido, o
-- JSON válido de MongoDB (con ObjectId, NumberInt, etc.)
+### Payload grande
+**Problema**: `op: "replace"` envía array completo (>6MB)
+**Solución**: `op: "add"` con `path: "/-"` (incremental)
 
-### No detecta issues esperados
+### Sin error handling
+**Problema**: Stages críticos sin `next.ERROR`
+**Solución**: Agregar error handlers centralizados
 
-Verifica que el check esté habilitado:
-```bash
-node src/cli.js analyze rutina.js --checks loop,payload,patch,scalability
+## Estructura
+
+```
+routines/input/current.json    # Tu rutina aquí
+.sessions/                      # Archivos generados (auto)
+  └── latest/
+      ├── optimized.json
+      ├── analysis.md
+      └── changes.diff
+knowledge/                      # Knowledge base
+templates/                      # Templates de código
 ```
 
-## Próximos Pasos
+## Más info
 
-1. **Obtener documentación API Cotalker** - Para mejorar precisión de estimaciones
-2. **Versiones de rutinas** - Para comparar antes/después de optimizaciones
-3. **Ejecutar en tus rutinas** - Identifica problemas específicos de tu caso
-
-## Contacto
-
-Para bugs o sugerencias, edita directamente el código en:
-- `/Users/juliocotalker/Develop/cotalker-routine-optimizer/`
-
-## Referencias
-
-- `README.md` - Documentación completa
-- `knowledge/optimization-patterns.md` - Estrategias de optimización
-- `knowledge/cotlang-reference.md` - Sintaxis de COTLang
-- `templates/` - Ejemplos de código optimizado
+- **README.md** - Documentación completa
+- **CLAUDE.md** - Instrucciones para Claude Code
+- **knowledge/** - Patrones y referencias

@@ -10,4 +10,32 @@ coverage/
 .vscode/
 .idea/
 package-lock.json
-CLAUDE.md
+
+# Archivos de trabajo - cada company tiene sus propias rutinas
+# IMPORTANTE: No commitear rutinas de clientes
+routines/input/*.js
+routines/input/*.json
+
+# Mantener estructura de directorios
+!routines/input/.gitkeep
+!routines/input/README.md
+
+# Sessions - todas las optimizaciones y archivos generados
+.sessions/
+
+# Archivos generados en root durante optimizaciones (DEPRECATED - ahora van a .sessions/)
+routine*.json
+routine*.js
+optimized*.json
+optimized*.js
+*.diff
+analysis*.md
+changes*.md
+SPRINT*.md
+CORRECCIONES*.md
+IMPLEMENTATION*.md
+ROUTINE_ANALYSIS*.md
+
+# Documentación antigua (renamed a .old)
+*.md.old
+*.txt.old
