@@ -227,6 +227,73 @@
       "reasoning": "Based on Lambda timeout (15min max) and average network call time (250ms), not arbitrary limits"
     },
     {
+      "id": "CCJS_LAMBDA_PAYLOAD_OVERFLOW",
+      "name": "Payload excesivo en invocación CCJS/Lambda",
+      "severity": "CRITICAL",
+      "description": "Cuando un stage CCJS recibe datos vía COTLang, las expresiones COTLang se resuelven a JSON y se pasan en el body de la invocación HTTP al Lambda. Si el JSON resultante supera ~6MB (límite Lambda) o ~10MB (límite práctico del request), la invocación falla. Esto ocurre típicamente cuando un COTLang como $OUTPUT#stage#data resuelve a un array muy grande.",
+      "detect": {
+        "stageType": "CCJS",
+        "condition": "stage.data.input contiene COTLang que resuelve a array grande (>5000 elementos o >6MB estimado)",
+        "heuristics": [
+          "CCJS con input que referencia $OUTPUT de NWRequest que retorna arrays grandes",
+          "CCJS que recibe resultado de FCEach acumulado",
+          "CCJS con múltiples $OUTPUT# que suman payloads grandes"
+        ]
+      },
+      "message": "CCJS stage receives large payload via COTLang resolution - Lambda invocation will fail if JSON body exceeds ~6MB",
+      "impact": {
+        "runtime": "Lambda invocation fails with RequestEntityTooLargeException (413) o timeout",
+        "debugging": "Error no es obvio: parece timeout pero es límite de payload en la invocación",
+        "scalability": "Funciona con pocos datos en dev, falla con volumen real en producción"
+      },
+      "recommendation": "En lugar de pasar el resultado de un NWRequest como input al CCJS vía COTLang (que serializa todo el JSON en el body), mover la llamada de red DENTRO del CCJS usando axios. Así el Lambda descarga los datos internamente sin pasar por el límite del body. Alternativas: (1) CCJS hace fetch interno con axios (RECOMENDADO), (2) Pasar solo IDs pequeños y que CCJS descargue, (3) Paginar el procesamiento en chunks",
+      "reference": "trade-offs.md#hard-limits",
+      "fix": {
+        "strategy": "url-reference",
+        "description": "Reemplazar payload directo con referencia a URL de descarga",
+        "before": {
+          "stage": "CCJS",
+          "input": "$OUTPUT#get_all_items#data",
+          "comment": "COTLang resuelve a JSON de 15MB → Lambda falla"
+        },
+        "after": {
+          "approach_1_recommended": {
+            "name": "Mover llamada de red dentro del CCJS (RECOMENDADO)",
+            "description": "En vez de: NWRequest → CCJS (con $OUTPUT del NWRequest como input), hacer todo dentro del CCJS con axios. Así el Lambda hace el fetch internamente y los datos nunca pasan por el body de la invocación.",
+            "steps": [
+              "Eliminar el NWRequest que obtiene los datos grandes",
+              "En el CCJS, usar axios.get() para descargar los datos directamente",
+              "Procesar los datos dentro del mismo CCJS"
+            ],
+            "example_before": "NWRequest (get_all_items) → CCJS (input: $OUTPUT#get_all_items#data → 15MB en body → FALLA)",
+            "example_after": "CCJS (sourceCode: const resp = await axios.get(env.BASEURL + '/api/v2/...'); return processData(resp.data);)"
+          },
+          "approach_2": {
+            "name": "Pasar solo IDs y fetch interno",
+            "description": "Si ya tienes los IDs en un stage previo, pásalos al CCJS (payload pequeño) y que el CCJS descargue los datos completos.",
+            "steps": [
+              "CCJS previo extrae solo IDs del array grande",
+              "CCJS principal recibe IDs (payload pequeño) y hace axios.get() para obtener datos completos"
+            ]
+          },
+          "approach_3": {
+            "name": "Procesamiento paginado",
+            "steps": [
+              "CCJS previo divide datos en chunks",
+              "FCEach itera sobre chunks (cada uno <6MB)",
+              "CCJS dentro del loop procesa cada chunk"
+            ]
+          }
+        }
+      },
+      "thresholds": {
+        "warning_payload_mb": 3,
+        "error_payload_mb": 6,
+        "critical_payload_mb": 10
+      },
+      "relatedPatterns": ["LARGE_PAYLOAD_WITHOUT_DELTA", "FULL_ARRAY_PATCH"]
+    },
+    {
       "id": "MISSING_ERROR_HANDLER",
       "name": "Etapa Crítica sin Manejo de Errores",
       "severity": "HIGH",

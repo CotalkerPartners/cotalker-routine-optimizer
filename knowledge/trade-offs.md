@@ -195,7 +195,12 @@ Savings: 150ms (35% improvement)
 **AWS Lambda:**
 - Maximum execution time: 15 minutes (900,000ms)
 - Memory: 128MB - 10GB (configurable)
-- Payload: 6MB request/response
+- Payload: 6MB request/response (aplica a invocación de CCJS: el COTLang se resuelve a JSON y se pasa en el body)
+
+**Cotalker API Rate Limits:**
+- 500 puntos por ventana de 5 segundos, 10 puntos por request
+- Máximo: 50 requests/5s, 10 requests/s, 600 requests/min
+- Exceder el límite retorna HTTP 429 (Too Many Requests)
 
 ### Soft Limits (Best Practices)
 

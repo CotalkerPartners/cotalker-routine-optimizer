@@ -107,6 +107,36 @@ El endpoint `/properties/` acepta un parámetro `ids` que permite consultar múl
 
 ---
 
+## Rate Limits
+
+La API de Cotalker tiene un rate limiter basado en puntos:
+
+| Métrica | Valor |
+|---------|-------|
+| Puntos totales por ventana | 500 |
+| Puntos por request | 10 |
+| Requests cada 5 segundos | 50 |
+| Requests por segundo | 10 |
+| Requests por minuto | 600 |
+
+### Implicaciones para rutinas
+
+- **Loops con NWRequest**: Un `FCEach` con NWRequest puede alcanzar el rate limit rápidamente. Con 10 requests/segundo, un loop de 100 iteraciones tarda mínimo 10 segundos solo por rate limiting.
+- **Batch endpoints**: Usar endpoints `/multi` o `?ids=` reduce drásticamente el consumo de puntos (1 request en vez de N).
+- **Rutinas paralelas**: Si múltiples rutinas ejecutan simultáneamente, comparten el mismo rate limit de la company.
+- **Recomendación**: Para loops >50 iteraciones con NWRequest, **siempre** considerar batch endpoints o consolidación en CCJS con `axios` (las llamadas desde CCJS a APIs externas NO pasan por el rate limiter de Cotalker, pero las llamadas a la API de Cotalker desde CCJS sí cuentan).
+
+### Manejo de Rate Limit Errors
+
+Cuando se excede el rate limit, la API retorna `429 Too Many Requests`. En rutinas:
+- Los stages `NWRequest` fallarán con error 429
+- Si el stage tiene `next.ERROR`, el flujo irá al error handler
+- Si no tiene `next.ERROR`, la rutina puede quedar en estado inconsistente
+
+**Estrategia recomendada**: Usar `FCSleep` entre batches de requests o consolidar en menos llamadas.
+
+---
+
 ## Notas de Uso
 
 ### Properties

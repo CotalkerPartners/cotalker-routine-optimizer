@@ -78,15 +78,22 @@ Used inside pipes `|` to transform data.
 
 ## 4. Contexts & Triggers Reference
 
-Structure of `$VALUE` depends on the Event Trigger:
+Each trigger takes a **snapshot** of its context (surrounding data) stored as JSON. Structure of `$VALUE` depends on the Event Trigger:
 
 | Trigger Source | Context Structure (`$VALUE`) | Key Usage Tip |
 | :--- | :--- | :--- |
-| **Slash Command** | `{ channel: {...}, message: {...}, cmdArgs: [...] }` | Use `$VALUE#cmdArgs|0` for first arg. |
-| **Survey (Channel)** | `{ ...COTAnswer, messages: COTMessage }` | Flattened answer. Access `responses` directly. |
-| **State Survey** | `{ ...COTTask, sentAnswer: COTAnswer }` | Access task fields (`status`) directly. |
-| **Workflow Start** | `{ answer: COTAnswer, meta: {...} }` | Use `$VALUE#answer|responses`. |
-| **Post Workflow** | `{ task: COTTask, parent: COTTask }` | Access current task or parent. |
+| **Slash Command** | `{ channel: COTChannel, message: COTMessage, cmdArgs: string[] }` | `$VALUE#cmdArgs|0` for first arg, `$VALUE#message|sentBy` for user. |
+| **Global Slash Command** | `{ channel: COTChannel, message: COTMessage, cmdArgs: string[] }` | Same as Slash Command but triggers in any channel. |
+| **Channel Survey** | `{ ...COTAnswer, messages: COTMessage }` | COTAnswer is spread. `$VALUE#data|[find=>identifier=X]|process|0` for field values. |
+| **Global Survey** | `{ ...COTAnswer, messages: COTMessage }` | Same as Channel Survey but triggers in any channel. |
+| **Schedule** | `{ /* custom body */ }` | Body defined in schedule config. |
+| **Workflow Start** | `{ answer: COTAnswer, meta: { parentTask: ObjectId, taskGroup: ObjectId } }` | `$VALUE#answer|data|[find=>identifier=X]|process|0` for form fields. |
+| **Post Workflow Start** | `{ task: COTTask, parent: COTTask }` | `$VALUE#task|_id` for new task, `$VALUE#parent|_id` for parent. |
+| **State Survey** | `{ ...COTTask, sentAnswer: COTAnswer }` | COTTask is spread: `$VALUE#_id`, `$VALUE#smState`. Form: `$VALUE#sentAnswer|data|[find=>identifier=X]|process|0`. |
+| **Changed State** | `{ ...COTTask }` | COTTask spread: `$VALUE#_id`, `$VALUE#smState` (new state), `$VALUE#assignee`. |
+| **SLA** | `{ taskId: ObjectId, taskGroupId: ObjectId, ChannelID: ObjectId }` | Only IDs, must fetch full data with NWRequest if needed. |
+
+**Important:** See `cotalker-routines.md` for complete data models (COTChannel, COTMessage, COTAnswer, COTTask, COTTaskGroup).
 
 ## 5. Advanced Patterns (Recipes)
 

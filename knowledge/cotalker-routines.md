@@ -235,15 +235,206 @@ Al revisar una rutina, verificar:
 
 ## Contextos según Trigger
 
-Los datos disponibles en `$VALUE` dependen de cómo se dispara la rutina:
+Cada vez que una rutina se dispara, se toma un **snapshot del contexto** que rodea al trigger. Este snapshot se almacena en formato JSON siguiendo los modelos de datos de Cotalker y es accesible vía `$VALUE` en COTLang.
 
-| Trigger | Datos Disponibles |
-|---------|-------------------|
-| Slash Command | `channel`, `user`, `cmdArgs`, `message` |
-| Survey/Form | `answer`, `channel`, `user`, `data` |
-| Workflow State Change | `task`, `taskGroup`, `channel`, `user`, estado anterior/nuevo |
-| SLA | `task`, `taskGroup`, `sla`, tiempos |
-| Schedule | Definido en configuración del schedule |
+### Tabla completa de triggers y contextos
+
+| # | Trigger | Contexto (`$VALUE`) | Descripción |
+|---|---------|---------------------|-------------|
+| 1 | **Slash Command** | `{ channel: COTChannel, message: COTMessage, cmdArgs: string[] }` | Bot disparado con comando `/` en un canal específico |
+| 2 | **Global Slash Command** | `{ channel: COTChannel, message: COTMessage, cmdArgs: string[] }` | Bot global disparado con comando `/` en cualquier canal |
+| 3 | **Channel Survey** | `{ ...COTAnswer, messages: COTMessage }` | Bot disparado por survey específico en canal específico |
+| 4 | **Global Survey** | `{ ...COTAnswer, messages: COTMessage }` | Bot disparado por survey específico en cualquier canal |
+| 5 | **Schedule** | `{ /* body personalizado */ }` | Ejecución programada (única o recurrente con cron) |
+| 6 | **Workflow Start** | `{ answer: COTAnswer, meta: { parentTask: ObjectId, taskGroup: ObjectId } }` | Survey disparado antes de iniciar un nuevo workflow |
+| 7 | **Post Workflow Start** | `{ task: COTTask, parent: COTTask }` | Disparado después de que inicia el workflow |
+| 8 | **State Survey (State Start Form)** | `{ ...COTTask, sentAnswer: COTAnswer }` | Disparado dentro de una tarea por survey en estados específicos |
+| 9 | **Changed State** | `{ ...COTTask }` | Disparado cuando una tarea cambia de estado |
+| 10 | **SLA** | `{ taskId: ObjectId, taskGroupId: ObjectId, ChannelID: ObjectId }` | Evento temporal basado en duración de tarea en un estado |
+
+### Acceso a datos por trigger (ejemplos COTLang)
+
+**Slash Command / Global Slash Command:**
+```
+$VALUE#channel|nameDisplay          → Nombre del canal
+$VALUE#message|content              → Contenido del mensaje
+$VALUE#cmdArgs|0                    → Primer argumento del comando
+$VALUE#channel|_id                  → ID del canal
+$VALUE#message|sentBy               → ID del usuario que envió el comando
+```
+
+**Channel Survey / Global Survey** (COTAnswer spread):
+```
+$VALUE#data|[find=>identifier=campo_nombre]|process|0    → Valor de un campo del formulario
+$VALUE#survey                                             → ID del survey respondido
+$VALUE#user                                               → ID del usuario que respondió
+$VALUE#channel                                            → ID del canal
+$VALUE#messages|content                                   → Mensaje asociado
+```
+
+**Workflow Start:**
+```
+$VALUE#answer|data|[find=>identifier=campo]|process|0    → Campo del formulario de inicio
+$VALUE#meta|parentTask                                    → ID de la tarea padre
+$VALUE#meta|taskGroup                                     → ID del task group
+```
+
+**Post Workflow Start:**
+```
+$VALUE#task|_id                     → ID de la tarea recién creada
+$VALUE#task|name                    → Nombre de la tarea
+$VALUE#task|channel                 → ID del canal de la tarea
+$VALUE#task|smState                 → Estado actual del workflow
+$VALUE#task|assignee                → Asignado de la tarea
+$VALUE#task|taskGroup               → Task group
+$VALUE#parent|_id                   → ID de la tarea padre (si existe)
+```
+
+**State Survey (State Start Form)** (COTTask spread + sentAnswer):
+```
+$VALUE#_id                          → ID de la tarea (spread de COTTask)
+$VALUE#name                         → Nombre de la tarea
+$VALUE#smState                      → Estado actual
+$VALUE#assignee                     → Asignado
+$VALUE#channel                      → Canal de la tarea
+$VALUE#sentAnswer|data|[find=>identifier=campo]|process|0  → Campo del formulario
+```
+
+**Changed State** (COTTask spread):
+```
+$VALUE#_id                          → ID de la tarea
+$VALUE#name                         → Nombre de la tarea
+$VALUE#smState                      → Nuevo estado (ya cambiado)
+$VALUE#assignee                     → Asignado
+$VALUE#channel                      → Canal de la tarea
+$VALUE#taskGroup                    → Task group
+$VALUE#status                       → Property de estado
+```
+
+**SLA:**
+```
+$VALUE#taskId                       → ID de la tarea
+$VALUE#taskGroupId                  → ID del task group
+$VALUE#ChannelID                    → ID del canal
+```
+
+### Modelos de datos de contexto
+
+#### COTChannel (campos más usados en rutinas)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `_id` | ObjectId | ID único del canal |
+| `company` | ObjectId | ID de la company |
+| `group` | ObjectId | ID del grupo padre |
+| `nameCode` | string | Código del canal (único, lowercase, max 60 chars) |
+| `nameDisplay` | string | Nombre visible del canal |
+| `userIds` | ObjectId[] | IDs de usuarios miembros |
+| `bots` | ObjectId[] | IDs de bots asignados |
+| `propertyIds` | ObjectId[] | IDs de properties asociadas |
+| `isActive` | boolean | Si el canal está activo |
+| `isPrivate` | boolean | Si el canal es privado |
+| `isDirect` | boolean | Si es mensaje directo |
+| `createdAt` | ISODate | Fecha de creación |
+| `modifiedAt` | ISODate | Última modificación |
+| `settings.write` | string | `"all"` o `"none"` |
+
+#### COTMessage (campos más usados en rutinas)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `_id` | ObjectId | ID del mensaje |
+| `channel` | ObjectId | Canal donde se envió |
+| `content` | string | Texto del mensaje |
+| `contentType` | string | Tipo: `text/plain`, `application/vnd.cotalker.survey`, etc. |
+| `sentBy` | ObjectId | ID del usuario que envió |
+| `createdAt` | number | Timestamp Unix de creación |
+| `answer` | string | Referencia a respuesta de survey (formato: `uuid#surveyId`) |
+| `responses` | object[] | Respuestas de survey (si aplica) |
+| `responses[].cdata` | string[] | Datos de la respuesta |
+| `responses[].cref` | ObjectId | Referencia a la pregunta |
+| `form.id` | ObjectId | ID principal del formulario |
+
+#### COTAnswer (campos más usados en rutinas)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `_id` | ObjectId | ID de la respuesta |
+| `uuid` | ObjectId | Código de identificación (usado como referencia) |
+| `survey` | ObjectId | ID del survey respondido |
+| `formId` | ObjectId | ID único del formulario enviado |
+| `user` | ObjectId | Usuario que respondió |
+| `channel` | ObjectId | Canal donde se respondió |
+| `company` | ObjectId | Company |
+| `properties` | ObjectId[] | Properties usadas en el survey |
+| `data` | COTAnswerData[] | **Array de respuestas del formulario** |
+| `createdAt` | ISODate | Fecha de envío |
+| `modifiedAt` | ISODate | Última modificación |
+
+**COTAnswerData** (cada elemento del array `data`):
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `identifier` | string | **Identificador del campo** (usado en `[find=>identifier=X]`) |
+| `contentType` | string | Tipo de contenido del campo |
+| `code` | string[] | Códigos internos de la respuesta |
+| `display` | string[] | Valores de display |
+| `responses` | string[] | Respuestas del usuario |
+| `process` | string[] | **Valores procesados** (el que más se usa para obtener datos) |
+| `question` | ObjectId | ID de la pregunta |
+
+**Patrón típico para acceder a un campo de formulario:**
+```
+$VALUE#data|[find=>identifier=nombre_campo]|process|0
+```
+Esto busca en el array `data` el elemento con `identifier` = `nombre_campo`, toma su array `process` y obtiene el primer valor.
+
+#### COTTask (campos más usados en rutinas)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `_id` | ObjectId | ID de la tarea |
+| `name` | string | Nombre de la tarea |
+| `serial` | number | Número serial secuencial |
+| `channel` | ObjectId | Canal/workspace de la tarea |
+| `taskGroup` | ObjectId | Task group al que pertenece |
+| `company` | ObjectId | Company |
+| `smState` | ObjectId | **Estado actual del workflow** |
+| `smStateMachine` | ObjectId | State machine del workflow |
+| `assignee` | ObjectId | Usuario asignado como responsable |
+| `editors` | ObjectId[] | Usuarios editores |
+| `followers` | ObjectId[] | Usuarios seguidores |
+| `visibility` | ObjectId[] | Usuarios con visibilidad limitada |
+| `status` | ObjectId | Property representando estado actual |
+| `status1` - `status5` | ObjectId | Properties de campos adicionales |
+| `asset` | ObjectId | Property de clasificación por activo |
+| `extensions` | object | Campos adicionales (collections como additional fields) |
+| `answers` | ObjectId[] | Respuestas de surveys en el canal |
+| `parent` | ObjectId | Tarea padre (jerarquía) |
+| `child` | ObjectId[] | Tareas hijas |
+| `startDate` | ISODate | Fecha de inicio |
+| `endDate` | ISODate | Fecha límite (deadline) |
+| `closedAt` | ISODate | Fecha de cierre (null si abierta) |
+| `createdAt` | ISODate | Fecha de creación |
+| `createdBy` | ObjectId | Usuario que creó la tarea |
+| `modifiedAt` | ISODate | Última modificación |
+| `isActive` | boolean | Si está activa |
+| `info` | string | Información adicional |
+
+#### COTTaskGroup (campos más usados en rutinas)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `_id` | ObjectId | ID del task group |
+| `group` | ObjectId | Grupo asociado |
+| `company` | ObjectId | Company |
+| `collectionName` | string | Código del workflow group (`groups.nameCode`) |
+| `flowType` | string | `"state-machine"` o `"free"` |
+| `initialStateMachine` | ObjectId | State machine inicial |
+| `botUser` | ObjectId | Bot automático asociado |
+| `isActive` | boolean | Si está activo |
+| `defaultView` | string | Vista por defecto: `list`, `kanban`, `calendar`, `gantt`, `grid` |
+| `createdAt` | ISODate | Fecha de creación |
 
 ---
 
@@ -267,6 +458,44 @@ En campos de configuración (excepto source code de CCJS): `= | ( ) [ ] #` deben
 
 ### Timeout de CCJS
 Las funciones en Custom Javascript Code tienen timeout de 30 segundos.
+
+### Límite de Payload en CCJS (Lambda)
+**CRÍTICO**: Los stages CCJS se ejecutan como funciones Lambda. Cuando un CCJS recibe datos vía COTLang (ej: `$OUTPUT#stage#data`), las expresiones COTLang se resuelven a JSON y se pasan en el **body del request HTTP** que invoca al Lambda. Si el JSON resultante supera **~6MB**, la invocación falla con `RequestEntityTooLargeException`.
+
+**Síntoma**: Rutina funciona en desarrollo con pocos datos pero falla en producción con volumen real.
+
+**Solución**: No pasar datos grandes como input al CCJS vía COTLang. En su lugar, mover la llamada de red **dentro** del CCJS usando `axios`:
+
+```javascript
+// ❌ MAL: NWRequest obtiene datos → CCJS los recibe como input vía COTLang
+// Flujo: get_all_items (NWRequest) → process_data (CCJS)
+{
+  "key": "get_all_items",
+  "name": "NWRequest",
+  "data": { "url": "/api/v2/properties/?limit=10000" },
+  "next": { "OK": "process_data" }
+}
+{
+  "key": "process_data",
+  "name": "CCJS",
+  "data": {
+    "input": "$OUTPUT#get_all_items#data"  // COTLang resuelve a 15MB → body del request al Lambda → FALLA
+  }
+}
+
+// ✅ BIEN: Eliminar el NWRequest y hacer el fetch dentro del CCJS con axios
+{
+  "key": "process_data",
+  "name": "CCJS",
+  "data": {
+    "sourceCode": "const response = await axios.get(env.BASEURL + '/api/v2/properties/?limit=10000', { headers: { Authorization: 'Bearer ' + env.TOKEN } }); const items = response.data.data; /* procesar items aquí */ return { result: items.length };"
+  }
+}
+```
+
+**Alternativas** cuando no se puede hacer todo en un CCJS:
+1. Pasar solo IDs (payload pequeño) y que el CCJS descargue datos completos con `axios`
+2. Paginar el procesamiento dividiendo en chunks <6MB
 
 ### Librerías en CCJS
 Disponibles: `axios`, `date-fns`, `form-data`, `qs`, `querystring`
