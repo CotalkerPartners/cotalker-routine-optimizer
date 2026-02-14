@@ -225,6 +225,70 @@
         "critical": 5000
       },
       "reasoning": "Based on Lambda timeout (15min max) and average network call time (250ms), not arbitrary limits"
+    },
+    {
+      "id": "MISSING_ERROR_HANDLER",
+      "name": "Etapa Crítica sin Manejo de Errores",
+      "severity": "HIGH",
+      "description": "Etapas que pueden fallar (NWRequest, CCJS, PBCreateTask, etc.) deben tener next.ERROR configurado",
+      "affectedStageTypes": ["NWRequest", "CCJS", "PBCreateTask", "PBUpdateTask", "PBChangeState", "PBDuplicateTask"],
+      "detect": {
+        "condition": "stage.name in affectedStageTypes AND (!stage.next.ERROR OR stage.next.ERROR === '')",
+        "example": {
+          "key": "risky_operation",
+          "name": "NWRequest",
+          "next": {
+            "OK": "next_step"
+          }
+        }
+      },
+      "message": "Critical stage missing error handler - errors may leave routine in inconsistent state",
+      "impact": {
+        "runtime": "Errores no manejados pueden dejar la rutina colgada o en estado inconsistente",
+        "debugging": "Difícil identificar qué salió mal sin feedback al usuario",
+        "ux": "Usuario no recibe notificación cuando algo falla"
+      },
+      "recommendation": "Agregar next.ERROR apuntando a un error handler que notifique al usuario",
+      "reference": "best-practices.md#2-manejo-de-errores-obligatorio",
+      "fix": {
+        "add_error_handler": true,
+        "template": "templates/stages/error-handler.json",
+        "example": {
+          "next": {
+            "OK": "next_step",
+            "ERROR": "error_handler"
+          }
+        }
+      }
+    },
+    {
+      "id": "MISSING_PROGRESS_NOTIFICATION",
+      "name": "Operación Larga sin Notificación de Progreso",
+      "severity": "MEDIUM",
+      "description": "Operaciones que pueden demorar (loops grandes, NWRequest lentos) deberían notificar al usuario que están en proceso",
+      "detect": {
+        "condition": "Loop con >50 iteraciones OR múltiples NWRequest en secuencia OR CCJS con procesamiento pesado",
+        "heuristics": [
+          "FCEach con control apuntando a array grande",
+          "3+ NWRequest consecutivos sin PBMessage intermedio",
+          "CCJS con sourceCode >500 caracteres (probablemente pesado)"
+        ]
+      },
+      "message": "Long-running operation without progress notification - user doesn't know if bot is processing or failed",
+      "impact": {
+        "ux": "Usuario no sabe si el bot está procesando o falló",
+        "support": "Aumenta tickets de 'el bot no responde'",
+        "perception": "Bot parece lento o roto"
+      },
+      "recommendation": "Agregar PBMessage antes de la operación larga informando que se está procesando",
+      "reference": "best-practices.md#1-notificaciones-de-progreso",
+      "fix": {
+        "add_progress_notification": true,
+        "template": "templates/stages/progress-notification.json",
+        "placement": "BEFORE long-running operation"
+      },
+      "canSuppress": true,
+      "suppressComment": "progress-notification-not-needed: internal routine / batch process / already has user feedback"
     }
   ],
   "metadata": {

@@ -46,6 +46,19 @@ When the user asks you to review/optimize a routine:
    - `changes.diff` - Visual diff
    - Any other files generated during optimization
 
+When the user asks you to **create a new routine** from business requirements:
+
+1. **Collect the business requirement** in Spanish
+2. **Load creation knowledge** from `knowledge/routine-creation-guide.md`
+3. **Load knowledge base** (`cotalker-routines.md`, `cotlang-reference.md`, `best-practices.md`, `cotalker-api-reference.md`)
+4. **Phase 1 - Design**: Generate Mermaid diagram + stage table + data flow → **WAIT for user approval**
+5. **Phase 2 - Generate**: Create `routine.json` (complete MongoDB document) + `setup-guide.md` with all best practices applied
+6. **Save all artifacts** to `.sessions/TIMESTAMP/`:
+   - `requirement.md` - Original business requirement
+   - `design.md` - Approved design (Mermaid + stages + data flow)
+   - `routine.json` - Complete routine ready to import
+   - `setup-guide.md` - Import and configuration instructions
+
 ## Project Structure
 
 ```
@@ -62,16 +75,23 @@ cotalker-routine-optimizer/
 │   ├── cotalker-api-reference.md   # Cotalker API reference
 │   ├── domain-specific.md          # Domain knowledge
 │   ├── trade-offs.md               # Optimization trade-offs
-│   └── cotalker-routines.md        # Platform knowledge (bot types, contexts)
+│   ├── cotalker-routines.md        # Platform knowledge (bot types, contexts)
+│   └── routine-creation-guide.md   # Guide for creating routines from requirements
 │
 ├── templates/                      # ← Use these for code generation
 │   ├── ccjs/                       # JavaScript snippets
 │   │   ├── safeJSON.js
 │   │   ├── deltaComputation.js
 │   │   └── jsonPatch.js
-│   └── stages/                     # Stage configurations
-│       ├── error-handler.json
-│       └── bypass-switch.json
+│   ├── stages/                     # Stage configurations
+│   │   ├── error-handler.json
+│   │   └── bypass-switch.json
+│   └── routines/                   # Routine scaffolds for creation
+│       ├── approval-workflow.json  # Approval/rejection flows
+│       ├── data-sync.json          # Data synchronization
+│       ├── notification-rules.json # Conditional notifications
+│       ├── crud-operation.json     # CRUD operations
+│       └── scheduled-task.json     # Scheduled/batch tasks
 │
 ├── src/
 │   ├── parsers/
@@ -433,6 +453,301 @@ Add centralized error handlers:
 ```
 
 See `knowledge/optimization-patterns.md` for more strategies.
+
+## Best Practices Validation
+
+When analyzing or optimizing routines, you MUST validate these best practices from `knowledge/best-practices.md`:
+
+### 1. Error Handling Coverage
+
+**Rule**: All critical stages MUST have `next.ERROR` configured.
+
+**Critical stage types**:
+- `NWRequest` - External APIs can fail (404, 500, timeout)
+- `CCJS` - JavaScript execution can throw errors
+- `PBCreateTask`, `PBUpdateTask`, `PBChangeState`, `PBDuplicateTask` - Database operations can fail
+- Any stage with business logic
+
+**Validation approach**:
+```javascript
+// Pseudo-code for detection
+const criticalTypes = ['NWRequest', 'CCJS', 'PBCreateTask', 'PBUpdateTask', 'PBChangeState', 'PBDuplicateTask'];
+const needsErrorHandler = criticalTypes.includes(stage.name);
+const hasErrorHandler = stage.next && stage.next.ERROR;
+
+if (needsErrorHandler && !hasErrorHandler) {
+  issues.push({
+    type: 'MISSING_ERROR_HANDLER',
+    stage: stage.key,
+    severity: 'HIGH',
+    fix: 'Add next.ERROR pointing to error handler'
+  });
+}
+```
+
+**Auto-fix**: When optimizing, automatically add error handlers using `templates/stages/error-handler.json`
+
+**Example**:
+```json
+// Before (missing error handler)
+{
+  "key": "fetch_data",
+  "name": "NWRequest",
+  "data": { "url": "/api/v2/data" },
+  "next": { "OK": "process_data" }
+}
+
+// After (with error handler)
+{
+  "key": "fetch_data",
+  "name": "NWRequest",
+  "data": { "url": "/api/v2/data" },
+  "next": {
+    "OK": "process_data",
+    "ERROR": "error_handler"
+  }
+}
+
+// Add error handler stage
+{
+  "key": "error_handler",
+  "name": "PBMessage",
+  "data": {
+    "channel": "$ENV#ERROR_CHANNEL",
+    "message": "❌ **Error en rutina**\n\n**Etapa**: Fetch Data\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*"
+  }
+}
+```
+
+### 2. Progress Notifications
+
+**Rule**: Operations that may take >5 seconds SHOULD notify the user they're processing.
+
+**Triggers for progress notifications**:
+- `FCEach` loops with >50 estimated iterations
+- Multiple `NWRequest` stages in sequence (3+)
+- `CCJS` with heavy processing (>500 chars of sourceCode as heuristic)
+- `NWRequest` to known slow endpoints (external APIs, reporting, exports)
+
+**Validation approach**:
+```javascript
+// Detect long-running operations
+const isLargeLoop = stage.name === 'FCEach' && estimatedIterations > 50;
+const isSequentialRequests = countSequentialStages(graph, stage.key, 'NWRequest') >= 3;
+const isHeavyComputation = stage.name === 'CCJS' && stage.data.sourceCode.length > 500;
+
+if (isLargeLoop || isSequentialRequests || isHeavyComputation) {
+  // Check if previous stage is a progress notification
+  const prevStage = findPreviousStage(graph, stage.key);
+  const hasProgressNotification = prevStage && prevStage.name === 'PBMessage' &&
+                                  prevStage.data.message &&
+                                  (prevStage.data.message.includes('Procesando') ||
+                                   prevStage.data.message.includes('⏳'));
+
+  if (!hasProgressNotification) {
+    issues.push({
+      type: 'MISSING_PROGRESS_NOTIFICATION',
+      stage: stage.key,
+      severity: 'MEDIUM',
+      fix: 'Add PBMessage before this stage to notify user'
+    });
+  }
+}
+```
+
+**Auto-fix**: Insert progress notification stage using `templates/stages/progress-notification.json`
+
+**Example**:
+```json
+// Before (no progress notification)
+{
+  "key": "process_large_loop",
+  "name": "FCEach",
+  "data": {
+    "control": "$OUTPUT#get_properties#data",  // 200 items
+    "target": "property"
+  },
+  "next": { "OK": "property_request" }
+}
+
+// After (with progress notification)
+{
+  "key": "notify_processing",
+  "name": "PBMessage",
+  "data": {
+    "channel": "$ENV#PROGRESS_CHANNEL",
+    "message": "⏳ Procesando 200 propiedades... Esto puede tomar 2-3 minutos."
+  },
+  "next": { "OK": "process_large_loop" }
+},
+{
+  "key": "process_large_loop",
+  "name": "FCEach",
+  "data": {
+    "control": "$OUTPUT#get_properties#data",
+    "target": "property"
+  },
+  "next": { "OK": "property_request" }
+}
+```
+
+### 3. When to Apply Best Practices
+
+**Always apply** (user-facing routines):
+- Triggered by surveys, buttons, workflows
+- Production routines with real users
+- Critical business processes
+
+**Optional** (internal routines):
+- Admin/maintenance routines
+- Development/testing routines
+- Batch/scheduled processes (no user waiting)
+
+### Example Workflow
+
+When user asks to optimize a routine:
+
+1. **Read routine** from `routines/input/current.json`
+2. **Validate best practices**:
+   - Check all NWRequest/CCJS/PB* stages have error handlers
+   - Detect long-running operations without progress notifications
+   - Check for input validation at routine start
+   - Check for bypass switches in loops with frequent empty cases
+3. **Report findings**:
+   ```
+   ⚠️  Found 5 stages without error handlers:
+   - get_properties (NWRequest) - line 245
+   - compute_totals (CCJS) - line 389
+   - create_invoice (PBCreateTask) - line 512
+   - update_status (PBUpdateTask) - line 634
+   - send_notification (NWRequest) - line 789
+
+   ⚠️  Found 2 long-running operations without progress notifications:
+   - iterar_propiedades (FCEach, ~200 iterations) - line 156
+   - sequential API calls (3 NWRequest in sequence) - line 567
+   ```
+4. **Optimize** (if user approves):
+   - Add error handlers using template
+   - Insert progress notifications before long operations
+   - Add input validation stages
+   - Add bypass switches where beneficial
+5. **Save to session**:
+   - `optimized.json` with fixes applied
+   - `analysis.md` explaining what was added and why
+   - `best-practices-report.md` checklist of improvements
+
+### Integration with Anti-Patterns
+
+Best practices validation complements anti-pattern detection:
+
+**Anti-patterns** (from `knowledge/anti-patterns.json`):
+- Focus on performance issues (N+1 queries, large payloads, nested loops)
+- Severity: CRITICAL/HIGH for scalability problems
+
+**Best practices** (from `knowledge/best-practices.md`):
+- Focus on UX and reliability (error handling, progress notifications)
+- Severity: HIGH for error handling, MEDIUM for progress notifications
+
+**Both should be validated** when analyzing routines.
+
+### Validation Checklist
+
+Before completing optimization, verify:
+
+- [ ] All critical stages have `next.ERROR` configured
+- [ ] Long-running operations have progress notifications
+- [ ] Input validation present at routine start
+- [ ] Bypass switches for loops with frequent empty cases
+- [ ] Error handlers use `$ENV#ERROR_CHANNEL`
+- [ ] Progress notifications use `$ENV#PROGRESS_CHANNEL`
+- [ ] Templates used consistently
+
+See `knowledge/best-practices.md` for complete guidelines and examples.
+
+## Creating Routines from Requirements
+
+You can **create new routines from scratch** when a user describes a business rule in Spanish. This follows a **two-phase flow** to ensure correctness before generating the final JSON.
+
+### Two-Phase Flow
+
+**Phase 1 - Design** (requires user approval):
+1. Collect the business requirement in Spanish
+2. Load `knowledge/routine-creation-guide.md` + knowledge base
+3. Identify: flow type, trigger, entities, integrations
+4. Select base template from `templates/routines/`
+5. Generate design: Mermaid diagram + stage table + data flow + variables + maxIterations
+6. Present to user and **WAIT FOR APPROVAL**
+
+**Phase 2 - Generation** (only after approval):
+1. Generate `routine.json`: Complete MongoDB document with all best practices
+2. Generate `setup-guide.md`: Import instructions, placeholder replacement, verification
+3. Save all artifacts to `.sessions/TIMESTAMP/`
+4. Show summary with next steps
+
+### Template Selection
+
+Select the base template based on the requirement:
+
+| Requirement Type | Template | Trigger |
+|---|---|---|
+| Approval/rejection flows | `templates/routines/approval-workflow.json` | Survey, Workflow |
+| Data synchronization | `templates/routines/data-sync.json` | Schedule, Workflow |
+| Conditional notifications | `templates/routines/notification-rules.json` | Survey, Workflow, SLA |
+| CRUD operations | `templates/routines/crud-operation.json` | Survey |
+| Scheduled/batch processing | `templates/routines/scheduled-task.json` | Schedule |
+
+### Best Practices Auto-Applied
+
+When creating routines, **automatically apply** all best practices:
+
+1. **Error handler centralizado**: `error_handler` stage with PBMessage to `$ENV#ERROR_CHANNEL`
+2. **`next.ERROR` en stages críticos**: NWRequest, CCJS, PBCreateTask, PBUpdateTask, PBChangeState, PBDuplicateTask
+3. **Validación de entrada**: First stage validates required trigger data
+4. **Bypass switch**: FCSwitchOne before FCEach loops for empty arrays
+5. **Notificación de progreso**: PBMessage before operations >5 seconds
+6. **Nombres descriptivos**: Stage keys as `verbo_sustantivo` in snake_case
+7. **Comentarios inline**: `_comment` on every stage
+
+### Session Artifacts
+
+| File | Phase | Content |
+|------|-------|---------|
+| `requirement.md` | 1 | Original business requirement |
+| `design.md` | 1 | Mermaid + stage table + data flow + variables |
+| `routine.json` | 2 | Complete MongoDB document ready to import |
+| `setup-guide.md` | 2 | Import instructions, placeholders, verification steps |
+
+### Example Workflow
+
+```
+User: "Crea una rutina que cuando un empleado llena el formulario de vacaciones,
+       notifique a su jefe y cambie el estado a 'Pendiente aprobación'"
+
+Phase 1 - You:
+1. Identify: Approval flow, Survey trigger
+2. Select: templates/routines/approval-workflow.json
+3. Design: 7 stages (validar → notificar_recepcion → obtener_jefe → notificar_jefe → cambiar_estado → error_handler → end)
+4. Generate Mermaid diagram + stage table + data flow
+5. Present design → "¿Apruebas este diseño?"
+
+User: "Sí, apruebo"
+
+Phase 2 - You:
+1. Generate routine.json with all stages, best practices, placeholders
+2. Generate setup-guide.md with placeholder replacement instructions
+3. Save to .sessions/TIMESTAMP/
+4. Show summary: "Rutina creada. Reemplaza [COMPANY_ID], [PENDING_STATE_ID], etc."
+```
+
+### Knowledge Base Priority (for creation)
+
+1. `knowledge/routine-creation-guide.md` - Central creation guide
+2. `knowledge/cotalker-routines.md` - Stage types and capabilities
+3. `knowledge/cotlang-reference.md` - COTLang syntax
+4. `knowledge/best-practices.md` - Best practices to apply
+5. `knowledge/cotalker-api-reference.md` - API endpoints
+
+See `knowledge/routine-creation-guide.md` for complete guide including stage selection matrix, naming conventions, maxIterations calculation, and pre-generation checklist.
 
 ## Documentation Generation
 
@@ -1077,6 +1392,7 @@ You are NOT just running a static analysis tool. You are an **intelligent optimi
 7. ✅ **Generates comprehensive documentation** in any format
 8. ✅ Explains trade-offs and reasoning
 9. ✅ Saves all artifacts to organized session directories
+10. ✅ **Creates new routines** from business requirements using two-phase flow (design → approval → generation)
 
 **Be proactive**: If you see something that could be optimized, suggest it. If you're uncertain about an endpoint, validate it. If COTLang looks wrong, check the syntax.
 
@@ -1129,5 +1445,23 @@ The user trusts you to be thorough and intelligent, not just a pattern matcher.
 3. If user provides token, validate via API
 4. If not, report IDs found and ask user to verify
 5. Save report to session
+
+### "Crea una rutina para [descripción]"
+1. Collect/confirm the business requirement in Spanish
+2. Load `knowledge/routine-creation-guide.md` + knowledge base
+3. Identify flow type, trigger, entities, integrations
+4. Select base template from `templates/routines/`
+5. **Phase 1**: Generate design (Mermaid + stage table + data flow + variables)
+6. Present design and **WAIT for user approval**
+7. **Phase 2** (after approval): Generate `routine.json` + `setup-guide.md`
+8. Save all artifacts to session
+9. Show summary with next steps
+
+### "Genera la rutina" (Phase 2 after design approval)
+1. Take the approved design from Phase 1
+2. Generate complete `routine.json` with all best practices applied
+3. Generate `setup-guide.md` with placeholder replacement instructions
+4. Save to session
+5. Show summary with list of placeholders to replace
 
 The user can ask in any combination - be flexible and adapt to their needs.

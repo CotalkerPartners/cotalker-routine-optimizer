@@ -1,6 +1,6 @@
 # Claude Code Skills
 
-Este proyecto incluye 6 skills para facilitar el trabajo con rutinas Cotalker.
+Este proyecto incluye 7 skills para facilitar el trabajo con rutinas Cotalker.
 
 ## Skills disponibles
 
@@ -58,9 +58,24 @@ Valida que rutinas referenciadas (PBRoutine) existan en el sistema.
 
 ---
 
+### 7. `/create-routine`
+Crea una rutina Cotalker nueva desde requerimientos de negocio en español. Flujo de dos fases: diseño (con aprobación) y generación del JSON.
+
+**Uso**: `/create-routine`
+
+**Output**:
+- `.sessions/latest/requirement.md` - Requerimiento original
+- `.sessions/latest/design.md` - Diagrama Mermaid + tabla de stages + data flow
+- `.sessions/latest/routine.json` - Rutina completa lista para importar a MongoDB
+- `.sessions/latest/setup-guide.md` - Guía de configuración e importación
+
+---
+
 ## Workflow típico
 
 ```bash
+# --- Optimizar rutina existente ---
+
 # 1. Crear nueva sesión
 /new-session
 
@@ -76,6 +91,11 @@ Valida que rutinas referenciadas (PBRoutine) existan en el sistema.
 
 # 5. Documentar
 /document-routine --include-analysis
+
+# --- Crear rutina nueva ---
+
+# Crear rutina desde requerimientos de negocio
+/create-routine
 ```
 
 ## Notas

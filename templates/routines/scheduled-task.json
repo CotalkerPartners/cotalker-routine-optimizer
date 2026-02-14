@@ -1,0 +1,202 @@
+{
+  "_metadata": {
+    "name": "Tarea Programada (Batch)",
+    "description": "Template para rutinas que se ejecutan periodicamente para procesar lotes de datos pendientes. Ejemplos: procesamiento de ordenes, limpieza de datos, reportes diarios.",
+    "triggerType": "schedule",
+    "variables": {
+      "[COMPANY_ID]": "ID de la empresa en Cotalker",
+      "[ERROR_CHANNEL]": "ObjectId del canal donde enviar errores",
+      "[PROGRESS_CHANNEL]": "ObjectId del canal donde enviar notificaciones de progreso",
+      "[PENDING_ITEMS_URL]": "URL de la API para obtener items pendientes (ej: api/v2/properties?filters={\"isActive\":true,\"status\":\"pending\"})",
+      "[UPDATE_ITEM_URL]": "URL base de la API para actualizar items (ej: api/v2/properties)",
+      "[COMPLETED_STATUS]": "Valor del estado completado para marcar items procesados"
+    },
+    "bestPractices": [
+      "Error handler centralizado",
+      "next.ERROR en todos los stages criticos",
+      "Bypass switch para cuando no hay items pendientes",
+      "Notificacion de progreso antes de procesamiento largo",
+      "Notificacion de completado con estadisticas",
+      "Batch processing en vez de N+1",
+      "Nombres descriptivos en snake_case",
+      "_comment en cada stage"
+    ]
+  },
+  "company": "[COMPANY_ID]",
+  "isActive": true,
+  "maxIterations": 130,
+  "surveyTriggers": [
+    {
+      "triggers": [
+        {
+          "version": "v3",
+          "start": "fetch_pending_items",
+          "stages": [
+            {
+              "key": "fetch_pending_items",
+              "name": "NWRequest",
+              "_comment": "Obtiene la lista de items pendientes de procesar",
+              "data": {
+                "url": "$JOIN#/#($ENV#BASEURL)#[PENDING_ITEMS_URL]",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer $ENV#API_TOKEN",
+                  "Content-Type": "application/json"
+                }
+              },
+              "next": {
+                "OK": "check_has_items",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "check_has_items",
+              "name": "CCJS",
+              "_comment": "Verifica si hay items pendientes y prepara datos para el bypass switch",
+              "data": {
+                "sourceCode": "const items = input.fetch_pending_items.data || [];\nreturn {\n  hasItems: items.length > 0,\n  totalItems: items.length,\n  items: items\n};"
+              },
+              "next": {
+                "OK": "bypass_check",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "bypass_check",
+              "name": "FCSwitchOne",
+              "_comment": "Bypass: salta el procesamiento si no hay items pendientes",
+              "data": {
+                "lexpression": "$OUTPUT#check_has_items#hasItems",
+                "rexpression": "false",
+                "rcaseA": true
+              },
+              "next": {
+                "CASE_A": "notify_no_items",
+                "DEFAULT": "notify_processing"
+              }
+            },
+            {
+              "key": "notify_no_items",
+              "name": "PBMessage",
+              "_comment": "Informa que no hay items pendientes para procesar",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "No hay items pendientes para procesar.\n\n**Timestamp**: $TIME#now#*",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end"
+              }
+            },
+            {
+              "key": "notify_processing",
+              "name": "PBMessage",
+              "_comment": "Notifica que se inicia el procesamiento del lote de items pendientes",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "Procesando $OUTPUT#check_has_items#totalItems items pendientes...\n\nEsto puede tomar unos momentos.",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "process_batch",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "process_batch",
+              "name": "FCEach",
+              "_comment": "Itera sobre cada item pendiente para procesarlo. NOTA: Si hay muchos items (>50), considerar usar batch/multi endpoint en vez de FCEach.",
+              "data": {
+                "control": "$OUTPUT#check_has_items#items",
+                "target": "current_item"
+              },
+              "next": {
+                "OK": "process_single_item",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "process_single_item",
+              "name": "CCJS",
+              "_comment": "Procesa un item individual: aplicar logica de negocio y preparar datos de actualizacion",
+              "data": {
+                "sourceCode": "const item = input.current_item;\n// Logica de procesamiento del item - adaptar segun necesidad\nconst processedData = {\n  itemId: item._id,\n  status: '[COMPLETED_STATUS]',\n  processedAt: new Date().toISOString()\n};\nreturn processedData;"
+              },
+              "next": {
+                "OK": "update_item_status",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "update_item_status",
+              "name": "NWRequest",
+              "_comment": "Actualiza el estado del item procesado en el sistema",
+              "data": {
+                "url": "$JOIN#/#($ENV#BASEURL)#[UPDATE_ITEM_URL]#($OUTPUT#process_single_item#itemId)",
+                "method": "PATCH",
+                "headers": {
+                  "Authorization": "Bearer $ENV#API_TOKEN",
+                  "Content-Type": "application/json"
+                },
+                "body": [
+                  {
+                    "op": "replace",
+                    "path": "/status",
+                    "value": "$OUTPUT#process_single_item#status"
+                  }
+                ]
+              },
+              "next": {
+                "OK": "notify_complete",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_complete",
+              "name": "PBMessage",
+              "_comment": "Notifica que el procesamiento del lote se completo exitosamente",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "**Procesamiento completado**\n\n**Items procesados**: $OUTPUT#check_has_items#totalItems\n**Timestamp**: $TIME#now#*",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end"
+              }
+            },
+            {
+              "key": "error_handler",
+              "name": "PBMessage",
+              "_comment": "Error handler centralizado - notifica errores al canal de errores",
+              "data": {
+                "channel": "$ENV#ERROR_CHANNEL",
+                "message": "**Error en tarea programada**\n\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*\n\n_Por favor contacte a soporte tecnico._",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "end"
+              }
+            },
+            {
+              "key": "end",
+              "name": "FCSleep",
+              "_comment": "Stage final - no-op para terminar la rutina",
+              "data": {
+                "time": "1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "_metadata": {
+    "name": "Notificaciones Condicionales",
+    "description": "Template para rutinas que evaluan condiciones y envian notificaciones por distintos canales segun el caso. Ejemplos: alertas por prioridad, notificaciones multi-canal, escalamiento.",
+    "triggerType": "survey | workflow | sla",
+    "variables": {
+      "[COMPANY_ID]": "ID de la empresa en Cotalker",
+      "[ERROR_CHANNEL]": "ObjectId del canal donde enviar errores",
+      "[CONDITION_FIELD]": "Identifier del campo que determina el tipo de notificacion (ej: prioridad, tipo)",
+      "[CONDITION_VALUE_A]": "Valor que activa la notificacion por canal (ej: 'alta', 'urgente')",
+      "[CONDITION_VALUE_B]": "Valor que activa la notificacion por email (ej: 'media', 'normal')",
+      "[CONDITION_VALUE_C]": "Valor que activa la notificacion por WhatsApp (ej: 'critica', 'emergencia')",
+      "[NOTIFY_CHANNEL_ID]": "ObjectId del canal Cotalker para notificaciones",
+      "[EMAIL_RECIPIENTS]": "Direccion(es) de email destinatarias",
+      "[WHATSAPP_PHONE]": "Numero de telefono para WhatsApp"
+    },
+    "bestPractices": [
+      "Error handler centralizado",
+      "next.ERROR en todos los stages criticos",
+      "Evaluacion de condicion como primer stage",
+      "Branches claros por canal de notificacion",
+      "Mensaje default para condiciones no contempladas",
+      "Nombres descriptivos en snake_case",
+      "_comment en cada stage"
+    ]
+  },
+  "company": "[COMPANY_ID]",
+  "isActive": true,
+  "maxIterations": 15,
+  "surveyTriggers": [
+    {
+      "triggers": [
+        {
+          "version": "v3",
+          "start": "evaluate_condition",
+          "stages": [
+            {
+              "key": "evaluate_condition",
+              "name": "CCJS",
+              "_comment": "Evalua la condicion que determina por que canal notificar",
+              "data": {
+                "sourceCode": "const conditionField = input.VALUE.data ? input.VALUE.data.find(d => d.identifier === '[CONDITION_FIELD]') : null;\nconst conditionValue = conditionField && conditionField.process ? conditionField.process[0].value || conditionField.process : '';\nreturn { conditionValue: String(conditionValue) };"
+              },
+              "next": {
+                "OK": "route_by_type",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "route_by_type",
+              "name": "FCSwitchOne",
+              "_comment": "Enruta la notificacion al canal apropiado segun la condicion evaluada",
+              "data": {
+                "lexpression": "$OUTPUT#evaluate_condition#conditionValue",
+                "rexpression": "[CONDITION_VALUE_A]",
+                "rcaseA": true,
+                "rexpressionB": "[CONDITION_VALUE_B]",
+                "rcaseB": true,
+                "rexpressionC": "[CONDITION_VALUE_C]",
+                "rcaseC": true
+              },
+              "next": {
+                "CASE_A": "notify_channel",
+                "CASE_B": "notify_email",
+                "CASE_C": "notify_whatsapp",
+                "DEFAULT": "notify_default"
+              }
+            },
+            {
+              "key": "notify_channel",
+              "name": "PBMessage",
+              "_comment": "Envia notificacion por canal Cotalker (condicion A)",
+              "data": {
+                "channel": "[NOTIFY_CHANNEL_ID]",
+                "message": "**Notificacion**\n\nSe ha detectado una condicion que requiere atencion.\n\n**Tipo**: $OUTPUT#evaluate_condition#conditionValue\n**Timestamp**: $TIME#now#*",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_email",
+              "name": "PBEmail",
+              "_comment": "Envia notificacion por email (condicion B)",
+              "data": {
+                "to": "[EMAIL_RECIPIENTS]",
+                "subject": "Notificacion: $OUTPUT#evaluate_condition#conditionValue",
+                "body": "<h2>Notificacion</h2><p>Se ha detectado una condicion que requiere atencion.</p><p><strong>Tipo</strong>: $OUTPUT#evaluate_condition#conditionValue</p><p><strong>Timestamp</strong>: $TIME#now#*</p>"
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_whatsapp",
+              "name": "PBWhatsApp",
+              "_comment": "Envia notificacion por WhatsApp (condicion C)",
+              "data": {
+                "phone": "[WHATSAPP_PHONE]",
+                "message": "Notificacion: Se ha detectado una condicion de tipo $OUTPUT#evaluate_condition#conditionValue que requiere atencion."
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_default",
+              "name": "PBMessage",
+              "_comment": "Notificacion por defecto cuando la condicion no coincide con ninguna regla especifica",
+              "data": {
+                "channel": "[NOTIFY_CHANNEL_ID]",
+                "message": "**Notificacion (default)**\n\nSe recibio una condicion no clasificada: $OUTPUT#evaluate_condition#conditionValue\n\n**Timestamp**: $TIME#now#*",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "error_handler",
+              "name": "PBMessage",
+              "_comment": "Error handler centralizado - notifica errores al canal de errores",
+              "data": {
+                "channel": "$ENV#ERROR_CHANNEL",
+                "message": "**Error en rutina de notificaciones**\n\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*\n\n_Por favor contacte a soporte tecnico._",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "end"
+              }
+            },
+            {
+              "key": "end",
+              "name": "FCSleep",
+              "_comment": "Stage final - no-op para terminar la rutina",
+              "data": {
+                "time": "1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

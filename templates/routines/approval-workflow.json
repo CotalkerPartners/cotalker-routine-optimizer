@@ -1,0 +1,147 @@
+{
+  "_metadata": {
+    "name": "Flujo de Aprobacion",
+    "description": "Template para rutinas que requieren revision y aprobacion/rechazo por un responsable. Ejemplos: solicitudes de compra, vacaciones, aprobacion de documentos.",
+    "triggerType": "survey | workflow",
+    "variables": {
+      "[COMPANY_ID]": "ID de la empresa en Cotalker",
+      "[ERROR_CHANNEL]": "ObjectId del canal donde enviar errores",
+      "[TASK_CHANNEL]": "ObjectId del canal de la tarea (o usar $VALUE#channel)",
+      "[PENDING_STATE_ID]": "ObjectId del estado 'Pendiente aprobacion' en el workflow",
+      "[APPROVER_FIELD]": "Identifier del campo del formulario que contiene el aprobador",
+      "[REQUEST_DESCRIPTION_FIELD]": "Identifier del campo con la descripcion de la solicitud"
+    },
+    "bestPractices": [
+      "Error handler centralizado",
+      "next.ERROR en todos los stages criticos",
+      "Validacion de entrada como primer stage",
+      "Nombres descriptivos en snake_case",
+      "_comment en cada stage"
+    ]
+  },
+  "company": "[COMPANY_ID]",
+  "isActive": true,
+  "maxIterations": 15,
+  "surveyTriggers": [
+    {
+      "triggers": [
+        {
+          "version": "v3",
+          "start": "validate_request",
+          "stages": [
+            {
+              "key": "validate_request",
+              "name": "FCSwitchOne",
+              "_comment": "Valida que los campos requeridos del formulario esten presentes",
+              "data": {
+                "lexpression": "$VALUE#data|[find=>identifier=[REQUEST_DESCRIPTION_FIELD]]|process",
+                "rexpression": "",
+                "rcaseA": true
+              },
+              "next": {
+                "CASE_A": "error_missing_data",
+                "DEFAULT": "notify_request_received"
+              }
+            },
+            {
+              "key": "error_missing_data",
+              "name": "PBMessage",
+              "_comment": "Notifica al usuario que faltan datos requeridos en la solicitud",
+              "data": {
+                "channel": "[TASK_CHANNEL]",
+                "message": "La solicitud no contiene los datos requeridos. Por favor complete todos los campos obligatorios.",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end"
+              }
+            },
+            {
+              "key": "notify_request_received",
+              "name": "PBMessage",
+              "_comment": "Confirma al solicitante que su solicitud fue recibida",
+              "data": {
+                "channel": "[TASK_CHANNEL]",
+                "message": "Su solicitud ha sido recibida y sera enviada al aprobador correspondiente.",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "get_approver_info",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "get_approver_info",
+              "name": "CCJS",
+              "_comment": "Extrae la informacion del aprobador desde los datos del formulario o contexto",
+              "data": {
+                "sourceCode": "const approverData = input.VALUE.data.find(d => d.identifier === '[APPROVER_FIELD]');\nconst approverId = approverData && approverData.process && approverData.process[0] ? approverData.process[0].value : null;\nif (!approverId) throw new Error('No se encontro aprobador asignado');\nreturn { approverId };"
+              },
+              "next": {
+                "OK": "notify_approver",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_approver",
+              "name": "PBMessage",
+              "_comment": "Notifica al aprobador que tiene una solicitud pendiente de revision",
+              "data": {
+                "channel": "[TASK_CHANNEL]",
+                "message": "**Nueva solicitud pendiente de aprobacion**\n\nTiene una nueva solicitud que requiere su revision. Por favor revise los detalles y apruebe o rechace.",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "change_state_pending",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "change_state_pending",
+              "name": "PBChangeState",
+              "_comment": "Cambia el estado de la tarea a 'Pendiente aprobacion'",
+              "data": {
+                "taskId": "$VALUE#task|_id",
+                "newState": "[PENDING_STATE_ID]"
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "error_handler",
+              "name": "PBMessage",
+              "_comment": "Error handler centralizado - notifica errores al canal de errores",
+              "data": {
+                "channel": "$ENV#ERROR_CHANNEL",
+                "message": "**Error en rutina de aprobacion**\n\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*\n\n_Por favor contacte a soporte tecnico._",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "end"
+              }
+            },
+            {
+              "key": "end",
+              "name": "FCSleep",
+              "_comment": "Stage final - no-op para terminar la rutina",
+              "data": {
+                "time": "1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

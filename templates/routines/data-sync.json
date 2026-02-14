@@ -1,0 +1,184 @@
+{
+  "_metadata": {
+    "name": "Sincronizacion de Datos",
+    "description": "Template para rutinas que sincronizan datos entre sistemas, calculan diferencias y aplican cambios. Ejemplos: sync de inventario, actualizacion de precios, importacion de datos.",
+    "triggerType": "schedule | workflow",
+    "variables": {
+      "[COMPANY_ID]": "ID de la empresa en Cotalker",
+      "[ERROR_CHANNEL]": "ObjectId del canal donde enviar errores",
+      "[PROGRESS_CHANNEL]": "ObjectId del canal donde enviar notificaciones de progreso",
+      "[SOURCE_API_URL]": "URL de la API fuente de datos (ej: /api/v2/properties?model=[MODEL_ID])",
+      "[TARGET_API_URL]": "URL de la API destino para aplicar cambios",
+      "[SOURCE_ID_FIELD]": "Campo que identifica cada registro en la fuente (ej: _id, code)",
+      "[TARGET_ID_FIELD]": "Campo que identifica cada registro en el destino"
+    },
+    "bestPractices": [
+      "Error handler centralizado",
+      "next.ERROR en todos los stages criticos",
+      "Validacion de fuente de datos",
+      "Bypass switch para cuando no hay cambios",
+      "Notificacion de progreso antes de aplicar cambios",
+      "Delta computation para minimizar payload",
+      "Nombres descriptivos en snake_case",
+      "_comment en cada stage"
+    ]
+  },
+  "company": "[COMPANY_ID]",
+  "isActive": true,
+  "maxIterations": 25,
+  "surveyTriggers": [
+    {
+      "triggers": [
+        {
+          "version": "v3",
+          "start": "validate_source",
+          "stages": [
+            {
+              "key": "validate_source",
+              "name": "CCJS",
+              "_comment": "Valida que la configuracion de la fuente de datos sea correcta antes de iniciar",
+              "data": {
+                "sourceCode": "const sourceUrl = '[SOURCE_API_URL]';\nif (!sourceUrl || sourceUrl.includes('[SOURCE_API_URL]')) throw new Error('URL de fuente no configurada');\nreturn { sourceUrl, validated: true };"
+              },
+              "next": {
+                "OK": "fetch_source_data",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "fetch_source_data",
+              "name": "NWRequest",
+              "_comment": "Obtiene los datos actuales de la fuente para compararlos con el destino",
+              "data": {
+                "url": "$JOIN#/#($ENV#BASEURL)#[SOURCE_API_URL]",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer $ENV#API_TOKEN",
+                  "Content-Type": "application/json"
+                }
+              },
+              "next": {
+                "OK": "compute_changes",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "compute_changes",
+              "name": "CCJS",
+              "_comment": "Calcula el delta entre datos fuente y destino. Solo procesa los registros que cambiaron.",
+              "data": {
+                "sourceCode": "const sourceData = input.fetch_source_data.data || [];\n// Comparar con datos existentes y calcular delta\nconst changes = sourceData.filter(item => {\n  // Logica de comparacion - adaptar segun necesidad\n  return item.isModified || item.isNew;\n});\nreturn {\n  totalSource: sourceData.length,\n  totalChanges: changes.length,\n  hasChanges: changes.length > 0,\n  changes: changes\n};"
+              },
+              "next": {
+                "OK": "check_has_changes",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "check_has_changes",
+              "name": "FCSwitchOne",
+              "_comment": "Bypass: salta el procesamiento si no hay cambios que aplicar",
+              "data": {
+                "lexpression": "$OUTPUT#compute_changes#hasChanges",
+                "rexpression": "false",
+                "rcaseA": true
+              },
+              "next": {
+                "CASE_A": "notify_no_changes",
+                "DEFAULT": "notify_processing"
+              }
+            },
+            {
+              "key": "notify_no_changes",
+              "name": "PBMessage",
+              "_comment": "Informa que no se encontraron cambios para aplicar",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "Sincronizacion completada. No se encontraron cambios para aplicar.\n\n**Registros revisados**: $OUTPUT#compute_changes#totalSource",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end"
+              }
+            },
+            {
+              "key": "notify_processing",
+              "name": "PBMessage",
+              "_comment": "Notifica que se van a aplicar cambios - puede tomar tiempo",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "Sincronizacion en progreso. Aplicando $OUTPUT#compute_changes#totalChanges cambios...\n\nEsto puede tomar unos momentos.",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "apply_changes",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "apply_changes",
+              "name": "NWRequest",
+              "_comment": "Aplica los cambios calculados al sistema destino. Usar batch/multi endpoint cuando sea posible.",
+              "data": {
+                "url": "$JOIN#/#($ENV#BASEURL)#[TARGET_API_URL]",
+                "method": "PATCH",
+                "headers": {
+                  "Authorization": "Bearer $ENV#API_TOKEN",
+                  "Content-Type": "application/json"
+                },
+                "body": "$OUTPUT#compute_changes#changes"
+              },
+              "next": {
+                "OK": "notify_result",
+                "ERROR": "error_handler"
+              }
+            },
+            {
+              "key": "notify_result",
+              "name": "PBMessage",
+              "_comment": "Notifica el resultado exitoso de la sincronizacion",
+              "data": {
+                "channel": "$ENV#PROGRESS_CHANNEL",
+                "message": "**Sincronizacion completada**\n\n**Registros revisados**: $OUTPUT#compute_changes#totalSource\n**Cambios aplicados**: $OUTPUT#compute_changes#totalChanges\n**Timestamp**: $TIME#now#*",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end"
+              }
+            },
+            {
+              "key": "error_handler",
+              "name": "PBMessage",
+              "_comment": "Error handler centralizado - notifica errores al canal de errores",
+              "data": {
+                "channel": "$ENV#ERROR_CHANNEL",
+                "message": "**Error en sincronizacion de datos**\n\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*\n\n_Por favor contacte a soporte tecnico._",
+                "options": {
+                  "parse_mode": "Markdown"
+                }
+              },
+              "next": {
+                "OK": "end",
+                "ERROR": "end"
+              }
+            },
+            {
+              "key": "end",
+              "name": "FCSleep",
+              "_comment": "Stage final - no-op para terminar la rutina",
+              "data": {
+                "time": "1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

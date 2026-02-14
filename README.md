@@ -9,7 +9,9 @@ Este proyecto detecta anti-patterns, valida endpoints y rutinas referenciadas, e
 - **Análisis guiado por conocimiento**: Claude Code usa `knowledge/` base para detectar anti-patterns
 - **Validación en tiempo real**: Verifica endpoints con curl, rutinas referenciadas vía API, sintaxis COTLang
 - **Optimización inteligente**: Propone y genera optimizaciones basadas en patrones probados
-- **Templates reutilizables**: CCJS snippets y stage configs para optimizaciones comunes
+- **Creación de rutinas desde requerimientos**: Genera rutinas completas a partir de descripciones de negocio en español
+- **Best practices automáticas**: Error handling, progress notifications y validación de entrada aplicados automáticamente
+- **Templates reutilizables**: CCJS snippets, stage configs y scaffolds de rutinas para casos comunes
 - **Context-aware**: Cada company tiene su token, las rutinas se cargan manualmente
 
 ## Casos de uso reales resueltos
@@ -17,6 +19,7 @@ Este proyecto detecta anti-patterns, valida endpoints y rutinas referenciadas, e
 - AWS Lambda `RequestEntityTooLargeException` (413) por payloads >6MB
 - Timeouts por N+1 queries (FCEach loops con NWRequest)
 - Problemas de escalabilidad bajo crecimiento de datos
+- Creación de rutinas desde cero con best practices aplicadas automáticamente
 
 ## Instalación
 
@@ -141,20 +144,29 @@ cotalker-routine-optimizer/
 ├── knowledge/                      # Knowledge base (Claude Code lee todo)
 │   ├── optimization-patterns.md    # Patrones de optimización probados
 │   ├── anti-patterns.json          # Anti-patterns a detectar
+│   ├── best-practices.md           # Best practices (error handling, notifications)
 │   ├── cotlang-reference.md        # Sintaxis COTLang V3
 │   ├── cotalker-api-reference.md   # Referencia API Cotalker
+│   ├── cotalker-routines.md        # Conocimiento completo de plataforma
 │   ├── domain-specific.md          # Conocimiento del dominio
-│   ├── trade-offs.md               # Trade-offs de optimización
-│   └── cotalker-routines.md        # Conocimiento completo de plataforma
+│   ├── routine-creation-guide.md   # Guía para crear rutinas desde requerimientos
+│   └── trade-offs.md               # Trade-offs de optimización
 │
 ├── templates/                      # Templates para código generado
 │   ├── ccjs/                       # Snippets JavaScript reutilizables
 │   │   ├── safeJSON.js
 │   │   ├── deltaComputation.js
 │   │   └── jsonPatch.js
-│   └── stages/                     # Configuraciones de stages
-│       ├── error-handler.json
-│       └── bypass-switch.json
+│   ├── stages/                     # Configuraciones de stages
+│   │   ├── error-handler.json
+│   │   ├── bypass-switch.json
+│   │   └── progress-notification.json
+│   └── routines/                   # Scaffolds para creación de rutinas
+│       ├── approval-workflow.json  # Flujos de aprobación/rechazo
+│       ├── crud-operation.json     # Operaciones CRUD
+│       ├── data-sync.json          # Sincronización de datos
+│       ├── notification-rules.json # Notificaciones condicionales
+│       └── scheduled-task.json     # Tareas programadas/batch
 │
 ├── src/
 │   ├── parsers/
@@ -214,6 +226,19 @@ Claude Code lee automáticamente toda la carpeta `knowledge/` para entender:
   - Checklist de análisis de rutinas
   - Contextos según trigger (Slash Command, Survey, Workflow, SLA, Schedule)
   - Notas técnicas (variables, timeout, librerías disponibles en CCJS)
+
+- **`best-practices.md`**: Best practices para rutinas Cotalker
+  - Error handling: todos los stages críticos con `next.ERROR`
+  - Progress notifications para operaciones largas (>5 segundos)
+  - Validación de entrada al inicio de rutinas
+  - Bypass switches para loops con arrays frecuentemente vacíos
+
+- **`routine-creation-guide.md`**: Guía para crear rutinas desde requerimientos
+  - Flujo de dos fases: diseño → aprobación → generación
+  - Matriz de selección de templates
+  - Convenciones de naming (`verbo_sustantivo` en snake_case)
+  - Cálculo de `maxIterations`
+  - Checklist de pre-generación
 
 ### Estrategias clave de optimización
 
@@ -282,6 +307,72 @@ Validando con API...
 ⚠️  La rutina proceso_secundario referencia una rutina que no existe.
    ¿Fue eliminada? ¿Necesitas actualizarla?
 ```
+
+## Creación de rutinas desde requerimientos
+
+Además de optimizar rutinas existentes, puedes **crear rutinas nuevas desde cero** describiendo el requerimiento de negocio en español.
+
+### Flujo de dos fases
+
+**Fase 1 - Diseño** (requiere aprobación):
+1. Describe el requerimiento en español
+2. Claude Code identifica: tipo de flujo, trigger, entidades, integraciones
+3. Selecciona template base de `templates/routines/`
+4. Genera diseño: diagrama Mermaid + tabla de stages + flujo de datos
+5. Presenta el diseño y **espera tu aprobación**
+
+**Fase 2 - Generación** (después de aprobación):
+1. Genera `routine.json` completo (documento MongoDB listo para importar)
+2. Genera `setup-guide.md` con instrucciones de configuración
+3. Guarda todos los artefactos en `.sessions/TIMESTAMP/`
+
+### Ejemplo de uso
+
+```
+Tú: "Crea una rutina que cuando un empleado llena el formulario de vacaciones,
+     notifique a su jefe y cambie el estado a 'Pendiente aprobación'"
+
+Claude Code (Fase 1):
+- Identifica: flujo de aprobación, trigger Survey
+- Selecciona template: approval-workflow.json
+- Genera diseño con 7 stages:
+  validar → notificar_recepcion → obtener_jefe → notificar_jefe → cambiar_estado → error_handler → end
+- Presenta diagrama Mermaid + tabla de stages
+- "¿Apruebas este diseño?"
+
+Tú: "Sí, apruebo"
+
+Claude Code (Fase 2):
+- Genera routine.json con todos los stages y best practices
+- Genera setup-guide.md con placeholders a reemplazar
+- Guarda en .sessions/TIMESTAMP/
+  ├── requirement.md
+  ├── design.md
+  ├── routine.json
+  └── setup-guide.md
+- "Rutina creada. Reemplaza [COMPANY_ID], [PENDING_STATE_ID], etc."
+```
+
+### Templates disponibles
+
+| Tipo de requerimiento | Template | Trigger típico |
+|---|---|---|
+| Flujos de aprobación/rechazo | `approval-workflow.json` | Survey, Workflow |
+| Sincronización de datos | `data-sync.json` | Schedule, Workflow |
+| Notificaciones condicionales | `notification-rules.json` | Survey, Workflow, SLA |
+| Operaciones CRUD | `crud-operation.json` | Survey |
+| Tareas programadas/batch | `scheduled-task.json` | Schedule |
+
+### Best practices aplicadas automáticamente
+
+Todas las rutinas creadas incluyen automáticamente:
+- Error handler centralizado con `PBMessage` a `$ENV#ERROR_CHANNEL`
+- `next.ERROR` en todos los stages críticos (NWRequest, CCJS, PB*)
+- Validación de entrada como primer stage
+- Bypass switch antes de loops (`FCSwitchOne` para arrays vacíos)
+- Notificaciones de progreso antes de operaciones largas
+- Nombres descriptivos en formato `verbo_sustantivo` (snake_case)
+- Comentarios inline (`_comment`) en cada stage
 
 ## Validación en tiempo real
 
@@ -354,6 +445,8 @@ npm run lint
 
 ## Workflow típico
 
+### Optimizar rutina existente
+
 1. **Exportar rutina** desde MongoDB de tu company
 2. **Guardar** en `routines/input/current.json`
 3. **Interactuar con Claude Code** directamente en este proyecto:
@@ -372,6 +465,17 @@ npm run lint
    - `analysis.md` - Explicación de cambios
    - `changes.diff` - Diferencias visuales
 6. **Importar** rutina optimizada a MongoDB (manualmente tras testing)
+
+### Crear rutina nueva
+
+1. **Describir el requerimiento** en español:
+   ```
+   "Crea una rutina que cuando un usuario llena el formulario X, notifique al supervisor y cambie el estado"
+   ```
+2. **Claude Code genera diseño** (diagrama + stages + data flow) y espera aprobación
+3. **Aprobar diseño** y Claude Code genera `routine.json` + `setup-guide.md`
+4. **Reemplazar placeholders** (`[COMPANY_ID]`, `[GROUP_ID]`, etc.) según setup-guide
+5. **Importar** rutina a MongoDB
 
 ## License
 

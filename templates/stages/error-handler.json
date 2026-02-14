@@ -1,11 +1,77 @@
 {
-  "key": "send_error_message",
+  "key": "error_handler",
   "name": "PBMessage",
   "data": {
-    "channelIds": ["$VALUE#channel"],
-    "content": "⚠️ Ha ocurrido un error en la rutina de facturación.\n\nPor favor contacte al administrador del sistema para revisar el problema.\n\nDetalles técnicos:\n- Etapa con error: {{STAGE_KEY}}\n- Fecha: {{TIMESTAMP}}"
+    "channel": "$ENV#ERROR_CHANNEL",
+    "message": "❌ **Error en rutina**\n\n**Etapa**: [STAGE_NAME]\n**Error**: $VALUE#error|message\n**Timestamp**: $TIME#now#*\n\n_Por favor contacte a soporte técnico._",
+    "options": {
+      "parse_mode": "Markdown"
+    }
   },
   "next": {
-    "SUCCESS": ""
+    "OK": "end",
+    "ERROR": "end"
+  },
+  "_usage": {
+    "_comment": "Standard error handler template for critical stages",
+    "_variables_to_replace": {
+      "[STAGE_NAME]": "Human-readable name of the stage that failed (e.g., 'Fetch Properties', 'Calculate Totals')",
+      "error_handler": "Optional: customize stage key to be more specific (e.g., 'error_fetch_properties')"
+    },
+    "_how_to_use": [
+      "1. Add this stage to your routine",
+      "2. Replace [STAGE_NAME] with descriptive stage name",
+      "3. Point critical stages' next.ERROR to this stage key",
+      "4. Ensure $ENV#ERROR_CHANNEL is configured in environment"
+    ],
+    "_critical_stages_requiring_error_handlers": [
+      "NWRequest - External APIs can fail",
+      "CCJS - JavaScript execution can throw errors",
+      "PBCreateTask, PBUpdateTask, PBChangeState, PBDuplicateTask - Database operations can fail"
+    ],
+    "_simple_example": {
+      "key": "fetch_properties",
+      "name": "NWRequest",
+      "data": {
+        "url": "/api/v2/properties"
+      },
+      "next": {
+        "OK": "process_properties",
+        "ERROR": "error_handler"
+      }
+    },
+    "_advanced_example_with_logging": [
+      {
+        "key": "error_log",
+        "name": "CCJS",
+        "data": {
+          "sourceCode": "return { errorLog: { stage: '[STAGE_NAME]', error: input.error, timestamp: new Date().toISOString(), context: input.VALUE } };"
+        },
+        "next": {
+          "OK": "error_save"
+        }
+      },
+      {
+        "key": "error_save",
+        "name": "NWRequest",
+        "data": {
+          "url": "$JOIN#/#($ENV#BASEURL)#api#v2#error-logs",
+          "method": "POST",
+          "body": "$OUTPUT#error_log#errorLog"
+        },
+        "next": {
+          "OK": "error_notify",
+          "ERROR": "error_notify"
+        }
+      },
+      {
+        "key": "error_notify",
+        "name": "PBMessage",
+        "data": {
+          "channel": "$ENV#ERROR_CHANNEL",
+          "message": "❌ Error en [STAGE_NAME]. ID de log: $OUTPUT#error_save#data|_id"
+        }
+      }
+    ]
   }
 }

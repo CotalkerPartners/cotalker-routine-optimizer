@@ -1,0 +1,39 @@
+{
+  "key": "notify_processing",
+  "name": "PBMessage",
+  "data": {
+    "channel": "$ENV#PROGRESS_CHANNEL",
+    "message": "⏳ Procesando [OPERATION_NAME]... Esto puede tomar unos momentos.",
+    "options": {
+      "parse_mode": "Markdown"
+    }
+  },
+  "next": {
+    "OK": "[NEXT_STAGE_KEY]"
+  },
+  "_usage": {
+    "_comment": "Template for progress notifications before long-running operations",
+    "_variables_to_replace": {
+      "[OPERATION_NAME]": "Description of the operation (e.g., '100 properties', 'data validation')",
+      "[NEXT_STAGE_KEY]": "Key of the next stage (the long-running operation)",
+      "notify_processing": "Optional: customize stage key to be more specific"
+    },
+    "_when_to_use": [
+      "Before FCEach loops with >50 iterations",
+      "Before multiple sequential NWRequest calls (3+)",
+      "Before heavy CCJS processing",
+      "Before any operation that may take >5 seconds"
+    ],
+    "_example": {
+      "key": "notify_start_processing_properties",
+      "name": "PBMessage",
+      "data": {
+        "channel": "$ENV#PROGRESS_CHANNEL",
+        "message": "⏳ Procesando 200 propiedades... Esto puede tomar 2-3 minutos."
+      },
+      "next": {
+        "OK": "process_properties_loop"
+      }
+    }
+  }
+}
